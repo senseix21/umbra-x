@@ -54,6 +54,8 @@ impl From<gossipsub::Event> for UmbraEvent {
 pub struct P2PNode {
     swarm: Swarm<UmbraBehaviour>,
     local_peer_id: PeerId,
+    message_rx: Option<tokio::sync::mpsc::UnboundedReceiver<(PeerId, Vec<u8>)>>,
+    message_tx: tokio::sync::mpsc::UnboundedSender<(PeerId, Vec<u8>)>,
 }
 
 impl P2PNode {
@@ -112,9 +114,13 @@ impl P2PNode {
         swarm.listen_on(listen_addr.parse().unwrap())
             .map_err(|e| crate::error::NetError::Transport(format!("Listen failed: {:?}", e)))?;
         
+        let (message_tx, message_rx) = tokio::sync::mpsc::unbounded_channel();
+        
         Ok(Self {
             swarm,
             local_peer_id,
+            message_rx: Some(message_rx),
+            message_tx,
         })
     }
     
@@ -160,60 +166,79 @@ impl P2PNode {
         Ok(())
     }
     
-    /// Run the event loop
-    pub async fn run(&mut self) -> crate::error::Result<()> {
+    /// Take message receiver for application use
+    pub fn take_message_receiver(&mut self) -> Option<tokio::sync::mpsc::UnboundedReceiver<(PeerId, Vec<u8>)>> {
+        self.message_rx.take()
+    }
+    
+    /// Get connected peers
+    pub fn connected_peers(&self) -> Vec<PeerId> {
+        self.swarm.connected_peers().copied().collect()
+    }
+    
+    /// Run one iteration of the event loop (non-blocking)
+    pub async fn poll_once(&mut self) -> crate::error::Result<()> {
         use futures::StreamExt;
         
-        loop {
-            match self.swarm.select_next_some().await {
-                SwarmEvent::NewListenAddr { address, .. } => {
-                    info!("Listening on {:?}", address);
-                }
-                SwarmEvent::Behaviour(event) => {
-                    match event {
-                        UmbraEvent::Ping(ping::Event { peer, result, .. }) => {
-                            match result {
-                                Ok(rtt) => info!("✓ Ping to {} succeeded: {:?}", peer, rtt),
-                                Err(e) => warn!("Ping to {} failed: {}", peer, e),
-                            }
-                        }
-                        UmbraEvent::Identify(identify::Event::Received { peer_id, info }) => {
-                            info!("Identified peer {}: {}", peer_id, info.protocol_version);
-                            for addr in info.listen_addrs {
-                                self.swarm.behaviour_mut().kad.add_address(&peer_id, addr);
-                            }
-                        }
-                        UmbraEvent::Kad(kad::Event::RoutingUpdated { peer, .. }) => {
-                            info!("Routing table updated: {}", peer);
-                        }
-                        UmbraEvent::Gossipsub(gossipsub::Event::Message {
-                            propagation_source,
-                            message,
-                            ..
-                        }) => {
-                            info!(
-                                "Received message from {}: {} bytes",
-                                propagation_source,
-                                message.data.len()
-                            );
-                        }
-                        _ => {}
-                    }
-                }
-                SwarmEvent::ConnectionEstablished { peer_id, endpoint, .. } => {
-                    info!("✓ Connected to {} via {:?}", peer_id, endpoint);
-                }
-                SwarmEvent::ConnectionClosed { peer_id, cause, .. } => {
-                    info!("Connection to {} closed: {:?}", peer_id, cause);
-                }
-                SwarmEvent::IncomingConnection { .. } => {
-                    info!("Incoming connection");
-                }
-                SwarmEvent::OutgoingConnectionError { peer_id, error, .. } => {
-                    warn!("Outgoing connection error to {:?}: {}", peer_id, error);
-                }
-                _ => {}
+        match self.swarm.select_next_some().await {
+            SwarmEvent::NewListenAddr { address, .. } => {
+                info!("Listening on {:?}", address);
             }
+            SwarmEvent::Behaviour(event) => {
+                match event {
+                    UmbraEvent::Ping(ping::Event { peer, result, .. }) => {
+                        match result {
+                            Ok(rtt) => info!("✓ Ping to {} succeeded: {:?}", peer, rtt),
+                            Err(e) => warn!("Ping to {} failed: {}", peer, e),
+                        }
+                    }
+                    UmbraEvent::Identify(identify::Event::Received { peer_id, info }) => {
+                        info!("Identified peer {}: {}", peer_id, info.protocol_version);
+                        for addr in info.listen_addrs {
+                            self.swarm.behaviour_mut().kad.add_address(&peer_id, addr);
+                        }
+                    }
+                    UmbraEvent::Kad(kad::Event::RoutingUpdated { peer, .. }) => {
+                        info!("Routing table updated: {}", peer);
+                    }
+                    UmbraEvent::Gossipsub(gossipsub::Event::Message {
+                        propagation_source,
+                        message,
+                        ..
+                    }) => {
+                        info!(
+                            "Received message from {}: {} bytes",
+                            propagation_source,
+                            message.data.len()
+                        );
+                        // Forward message to application layer
+                        let _ = self.message_tx.send((propagation_source, message.data));
+                    }
+                    _ => {}
+                }
+            }
+            SwarmEvent::ConnectionEstablished { peer_id, endpoint, .. } => {
+                info!("✓ Connected to {} via {:?}", peer_id, endpoint);
+            }
+            SwarmEvent::ConnectionClosed { peer_id, cause, .. } => {
+                info!("Connection to {} closed: {:?}", peer_id, cause);
+            }
+            SwarmEvent::IncomingConnection { .. } => {
+                info!("Incoming connection");
+            }
+            SwarmEvent::OutgoingConnectionError { peer_id, error, .. } => {
+                warn!("Outgoing connection error to {:?}: {}", peer_id, error);
+            }
+            _ => {}
+        }
+        
+        Ok(())
+    }
+    
+    /// Run the event loop
+    pub async fn run(&mut self) -> crate::error::Result<()> {
+        loop {
+            self.poll_once().await?;
         }
     }
 }

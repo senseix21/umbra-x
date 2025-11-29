@@ -10,6 +10,7 @@ members = [
     "crates/umbra-sdk",
     "apps/node",
     "apps/desktop",
+    "apps/cli",
     "examples",
 ]
 

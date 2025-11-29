@@ -2,10 +2,28 @@
 
 **Post-quantum private chat with zk-verified humans. No servers. No spam. No trace.**
 
+## 🎉 Status: CLI Fully Functional
+
+The P2P CLI messenger is **ready to use**! Features:
+- ✅ Real-time P2P messaging
+- ✅ End-to-end encryption (ChaCha20-Poly1305)
+- ✅ Peer discovery (Kademlia DHT + manual connection)
+- ✅ Interactive async CLI
+- ✅ Clean message display
+- ✅ Production-ready build
+
+**Quick Start:**
+```bash
+cargo build --release --bin umbra
+./target/release/umbra start -u alice -p 5000
+```
+
+See [CLI_USER_GUIDE.md](./CLI_USER_GUIDE.md) for detailed usage.
+
 ## Core Promise
 
 - **Post-quantum E2EE**: Hybrid X25519 + ML-KEM (Kyber) with ML-DSA (Dilithium) signatures
-- **ZK-verified personhood**: Prove you're a unique human without revealing identity
+- **ZK-verified personhood**: Prove you're a unique human without revealing identity  
 - **Fully P2P mesh**: Onion routing with cover traffic prevents social graph mapping
 - **Stateless clients**: RAM-only mode plus encrypted portable state for "vanish on close" sessions
 

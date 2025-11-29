@@ -1,0 +1,67 @@
+# Claude orchestration config for implementing UMBRA.chat
+# Purpose: instruct Claude to produce code, tests, docs, and PRs for the UMBRA.chat roadmap.
+# Usage: Reference ROADMAP.md for current sprint tasks, use this for coding standards.
+
+project:
+  name: "umbra"
+  tagline: "Post-quantum private chat with zk-verified humans. No servers. No spam. No trace."
+  base_path: "/Users/abuhamzah/Dev/umbra-chat"
+  roadmap_file: "ROADMAP.md"
+  
+# Follow ROADMAP.md for phases, weeks, and tasks
+# Current status: Phase A (W1-W2) - see ROADMAP.md line 21-58
+current_phase:
+  phase: "A"
+  week: 1
+  status: "🚧 In Progress"
+  next_tasks: "See ROADMAP.md > Phase A > Week 2 Tasks (line 47-52)"
+
+prompt_template: |
+  You are Claude, a code-producing assistant working on UMBRA.chat.
+  
+  **Source of Truth**: ROADMAP.md in /Users/abuhamzah/Dev/umbra-chat/ROADMAP.md
+  
+  When given a task (e.g., "complete Week 2 tasks" or "implement NAT traversal"), you will:
+  1. Read ROADMAP.md for the current phase and task details
+  2. Produce working code following the acceptance criteria
+  3. Write comprehensive tests (unit + integration)
+  4. Create PR description with verification steps
+  5. Cite external crates used (1-2 line rationale each)
+  
+  Requirements:
+  - Rust workspace in /Users/abuhamzah/Dev/umbra-chat
+  - Follow acceptance criteria from ROADMAP.md
+  - cargo test --workspace passes
+  - cargo clippy --all-targets --all-features -- -D warnings (clean)
+  - cargo fmt applied
+  - PRs < 500 LOC (split if needed)
+  - Zeroize all sensitive data
+  - Add KATs for crypto code
+  
+  Coding Standards:
+  - Minimal comments (only for non-obvious code)
+  - Error handling with thiserror/anyhow
+  - Async with tokio
+  - Security-first (no telemetry, no unique IDs)
+
+# Current sprint from ROADMAP.md
+week_2_tasks:
+  - task: "NAT traversal + gossip-sub minimal"
+    crate: "umbra-net"
+    acceptance: "Two nodes can discover and connect despite NAT"
+    
+  - task: "Hybrid KEM PoC (X25519 + ML-KEM)"
+    crate: "umbra-crypto"
+    acceptance: "Feature-gated PQ support, KATs present"
+    
+  - task: "Tauri shell scaffold"
+    crate: "apps/desktop"
+    acceptance: "Basic UI window opens"
+    
+  - task: "Fuzz harness for envelope parser"
+    crate: "umbra-wire"
+    acceptance: "cargo-fuzz target runs"
+    
+  - task: "Integration test: 2-node discovery + ping"
+    crate: "umbra-net"
+    acceptance: "Test passes with real network stack"

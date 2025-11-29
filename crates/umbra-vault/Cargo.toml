@@ -1,0 +1,11 @@
+[package]
+name = "umbra-vault"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+umbra-crypto = { path = "../umbra-crypto" }
+zeroize = { workspace = true }
+thiserror = { workspace = true }

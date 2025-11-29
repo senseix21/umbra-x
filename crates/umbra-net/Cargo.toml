@@ -1,0 +1,33 @@
+[package]
+name = "umbra-net"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+# Networking
+libp2p = { workspace = true }
+libp2p-swarm = "0.44"
+libp2p-swarm-derive = "0.34"
+quinn = { workspace = true }
+
+# Async
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+futures = { workspace = true }
+
+# Utils
+bytes = { workspace = true }
+rand = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+
+# Internal
+umbra-wire = { path = "../umbra-wire" }
+umbra-crypto = { path = "../umbra-crypto" }
+
+[dev-dependencies]
+tracing-subscriber = { workspace = true }
+tokio = { workspace = true, features = ["test-util"] }

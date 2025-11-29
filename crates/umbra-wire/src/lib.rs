@@ -1,0 +1,79 @@
+use serde::{Deserialize, Serialize};
+
+pub const PROTOCOL_VERSION: u32 = 1;
+pub const FRAME_SIZE: usize = 512;
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct MessageEnvelope {
+    pub version: u32,
+    pub message_type: MessageType,
+    pub payload: Vec<u8>,
+    pub nonce: [u8; 12],
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum MessageType {
+    Handshake,
+    Data,
+    Control,
+    CoverTraffic,
+}
+
+impl MessageEnvelope {
+    pub fn new(message_type: MessageType, payload: Vec<u8>) -> Self {
+        use rand::Rng;
+        let mut nonce = [0u8; 12];
+        rand::thread_rng().fill(&mut nonce);
+        
+        Self {
+            version: PROTOCOL_VERSION,
+            message_type,
+            payload,
+            nonce,
+        }
+    }
+    
+    /// Pad message to fixed frame size
+    pub fn to_fixed_frame(&self) -> Vec<u8> {
+        let serialized = serde_json::to_vec(self).unwrap();
+        let mut frame = vec![0u8; FRAME_SIZE];
+        
+        if serialized.len() > FRAME_SIZE {
+            // Fragment if needed (simplified for now)
+            frame.copy_from_slice(&serialized[..FRAME_SIZE]);
+        } else {
+            frame[..serialized.len()].copy_from_slice(&serialized);
+        }
+        
+        frame
+    }
+    
+    pub fn from_frame(frame: &[u8]) -> Result<Self, serde_json::Error> {
+        // Find actual message end (before padding)
+        let trimmed = frame.iter()
+            .position(|&x| x == 0)
+            .map(|pos| &frame[..pos])
+            .unwrap_or(frame);
+        
+        serde_json::from_slice(trimmed)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    #[test]
+    fn test_envelope_roundtrip() {
+        let envelope = MessageEnvelope::new(
+            MessageType::Data,
+            b"hello world".to_vec(),
+        );
+        
+        let frame = envelope.to_fixed_frame();
+        assert_eq!(frame.len(), FRAME_SIZE);
+        
+        let decoded = MessageEnvelope::from_frame(&frame).unwrap();
+        assert_eq!(decoded.payload, envelope.payload);
+    }
+}

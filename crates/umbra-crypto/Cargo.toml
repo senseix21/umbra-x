@@ -1,0 +1,35 @@
+[package]
+name = "umbra-crypto"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+# Classical crypto
+ring = { workspace = true }
+chacha20poly1305 = { workspace = true }
+x25519-dalek = { workspace = true }
+ed25519-dalek = { workspace = true }
+sha2 = { workspace = true }
+blake3 = { workspace = true }
+hpke = { workspace = true }
+
+# Post-quantum (feature-gated)
+oqs = { workspace = true, optional = true }
+pqcrypto-kyber = { workspace = true, optional = true }
+pqcrypto-dilithium = { workspace = true, optional = true }
+
+# Utils
+zeroize = { workspace = true }
+rand = { workspace = true }
+thiserror = { workspace = true }
+bytes = { workspace = true }
+
+[features]
+default = []
+pq = ["oqs"]
+pq-pure-rust = ["pqcrypto-kyber", "pqcrypto-dilithium"]
+
+[dev-dependencies]
+hex = "0.4"

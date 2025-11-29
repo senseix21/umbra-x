@@ -1,0 +1,11 @@
+[package]
+name = "umbra-mls"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+umbra-crypto = { path = "../umbra-crypto" }
+thiserror = { workspace = true }
+zeroize = { workspace = true }

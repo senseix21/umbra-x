@@ -25,6 +25,7 @@ zeroize = { workspace = true }
 rand = { workspace = true }
 thiserror = { workspace = true }
 bytes = { workspace = true }
+libp2p = { workspace = true }
 
 [features]
 default = []

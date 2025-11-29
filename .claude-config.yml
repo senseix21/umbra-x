@@ -1,0 +1,115 @@
+# Claude orchestration config for implementing UMBRA.chat
+# Purpose: instruct Claude to produce code, tests, docs, and PRs for the UMBRA.chat roadmap.
+
+project:
+  name: "umbra"
+  tagline: "Post-quantum private chat with zk-verified humans. No servers. No spam. No trace."
+  repo_layout:
+    - path: "crates/umbra-net"
+      desc: "libp2p swarm, QUIC transport, onion circuits, cover traffic"
+    - path: "crates/umbra-crypto"
+      desc: "HPKE hybrid (X25519 + ML-KEM), AEAD, KDFs, key mgmt"
+    - path: "crates/umbra-mls"
+      desc: "MLS glue + group state machine (hybrid secrets)"
+    - path: "crates/umbra-zk"
+      desc: "RLN / Semaphore nullifiers, zkVM adapters"
+    - path: "crates/umbra-wire"
+      desc: "message schemas (prost/capnp), versioning, test vectors"
+    - path: "crates/umbra-vault"
+      desc: "sealed storage (optional), export/import blobs"
+    - path: "crates/umbra-sdk"
+      desc: "high-level client API + bot/capsule runtime (WASI)"
+    - path: "apps/node"
+      desc: "CLI daemon for headless gateways / relays"
+    - path: "apps/desktop"
+      desc: "Tauri UI (Rust + small webview)"
+    - path: "examples"
+      desc: "simple_chat.rs, group_chat.rs"
+
+meta:
+  language: "en"
+  primary_tech: "rust"
+  rust_toolchain: "1.81"
+  edition: "2021"
+  license:
+    core: "AGPL-3.0"
+    sdk_examples: "Apache-2.0"
+  ci_frameworks:
+    - "github-actions"
+    - "cargo-deny"
+    - "cargo-fuzz (libfuzzer)"
+
+team_roles_template:
+  - role: "lead-systems-rust"
+    headcount: 1
+    responsibilities: ["networking core", "perf", "crate scaffolding"]
+  - role: "crypto-engineer"
+    headcount: 1
+    responsibilities: ["PQ hybrid KEMs", "HPKE wrapper", "KATs"]
+  - role: "zk-engineer"
+    headcount: 1
+    responsibilities: ["RLN/Semaphore circuits", "zkVM adapter"]
+
+constraints:
+  - "No plaintext telemetry or unique IDs in any shipped binary."
+  - "Feature flags for PQ components; must be 'opt-in' at compile time."
+  - "All wire formats are versioned and backwards-compatible by semantic IDs."
+  - "Default runtime mode: RAM-only ephemeral."
+
+coding:
+  style:
+    rustfmt: "stable"
+    clippy: "deny(warnings) for CI"
+    tests: "unit + integration required for all new public APIs"
+  commit_convention:
+    pattern: "<scope>: <short summary>"
+    examples:
+      - "umbra-net: add quic transport adapter skeleton"
+      - "umbra-crypto: add hybrid hpke helper"
+
+milestones:
+  - name: "M1 Foundations"
+    due_weeks: 2
+  - name: "M2 P2P + Hybrid"
+    due_weeks: 6
+  - name: "M3 MLS + Vault"
+    due_weeks: 9
+  - name: "M4 ZK Layer"
+    due_weeks: 13
+  - name: "M5 Privacy Hardening"
+    due_weeks: 16
+
+epics:
+  - id: "EPIC-NET"
+    title: "Networking Core"
+    stories:
+      - id: "NET-001"
+        title: "QUIC transport adapter"
+        effort: 5
+      - id: "NET-002"
+        title: "Kademlia DHT + basic discovery"
+        effort: 4
+      - id: "NET-003"
+        title: "Onion circuit builder (3 hops) skeleton"
+        effort: 8
+  - id: "EPIC-CRYPTO"
+    title: "Crypto Core"
+    stories:
+      - id: "CRYPTO-001"
+        title: "Hybrid KEM helper (X25519 + Kyber)"
+        effort: 5
+      - id: "CRYPTO-002"
+        title: "HPKE wrapper + AEAD envelope"
+        effort: 4
+  - id: "EPIC-MLS"
+    title: "MLS Groups"
+    stories:
+      - id: "MLS-001"
+        title: "MLS group wrapper (small groups)"
+        effort: 6
+  - id: "EPIC-ZK"
+    title: "ZK Layer"
+    stories:
+      - id: "ZK-001"
+        title: "RLN proof integration"
+        effort: 8

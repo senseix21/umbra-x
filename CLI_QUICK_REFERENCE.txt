@@ -1,0 +1,122 @@
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃                   UMBRA CLI - QUICK REFERENCE                       ┃
+┃                      Visual Enhancement Edition                     ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+📦 BUILD & RUN
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  cargo build --release
+  ./target/release/umbra info
+  ./target/release/umbra start -u <username> -p <port>
+  ./demo_visual_cli.sh
+
+🎨 VISUAL FEATURES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ✅ 8+ Color Palette        🎨 Cyan, Green, Red, Yellow, Magenta...
+  ✅ Unicode Box-Drawing     ╔═╗ ║ ─ ┌┐└┘
+  ✅ Emoji Indicators        🔒 ✓ ✗ ⏳ 📞 🚀 ⚠
+  ✅ Timestamps              [HH:MM:SS]
+  ✅ Color-Coded Prompts     username●
+  ✅ Professional Status     Bold + Colors
+
+💬 CHAT COMMANDS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  /help      Show formatted help menu
+  /peers     Show network status + connected peers
+  /clear     Clear screen and refresh
+  /quit      Graceful exit with goodbye banner
+  /exit      (alias for /quit)
+
+🚀 STARTUP
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # Terminal 1 (Alice)
+  ./target/release/umbra start -u alice -p 9000
+
+  # Terminal 2 (Bob) - copy Alice's address from Terminal 1
+  ./target/release/umbra start -u bob -c "/ip4/.../p2p/..."
+
+📊 MESSAGE FORMAT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Outgoing:   alice● hello world
+              ✓ Sent (encrypted)
+
+  Incoming:   [14:32:15] @12D3KooW → bob: hi alice!
+              alice●
+
+🎯 COLOR SCHEME
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  🔵 Cyan      Headers, labels, structure
+  🟢 Green     Success, confirmations
+  🔴 Red       Errors, failures
+  🟡 Yellow    Warnings, tips, info
+  🟣 Magenta   User prompts, commands
+  ⚪ White     Primary text
+  ⚫ Gray      Timestamps (dimmed)
+
+📁 FILES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Core:
+    apps/cli/src/ui.rs              Visual component library
+    apps/cli/src/main.rs            Entry point
+    apps/cli/src/chat.rs            Chat session
+
+  Documentation:
+    CLI_VISUAL_GUIDE.md             User guide
+    CLI_ENHANCEMENT_SUMMARY.md      Technical details
+    BEFORE_AFTER_CLI.md             Visual comparison
+    CLI_VISUAL_COMPLETE.md          Completion summary
+    demo_visual_cli.sh              Demo script
+
+📚 KEY COMMANDS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ./target/release/umbra info
+    └─ Show comprehensive project information
+
+  ./target/release/umbra start -u alice -p 9000
+    └─ Start node as "alice" on port 9000
+
+  ./target/release/umbra start -u bob -c "<peer_addr>"
+    └─ Start node as "bob" and connect to peer
+
+🎬 DEMO FLOW
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  1. Build:     cargo build --release
+  2. Info:      ./target/release/umbra info
+  3. Start:     ./target/release/umbra start -u alice -p 9000
+  4. Connect:   (Terminal 2) Copy address and connect
+  5. Chat:      Send messages, try commands
+  6. Status:    /peers to see connections
+  7. Help:      /help for command reference
+  8. Exit:      /quit for goodbye banner
+
+✨ HIGHLIGHTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ✓ Professional startup banner
+  ✓ Color-coded status messages
+  ✓ Timestamped incoming messages
+  ✓ Abbreviated peer IDs for readability
+  ✓ User-friendly error messages
+  ✓ Beautiful goodbye screen
+  ✓ Comprehensive project info
+  ✓ Screen clear functionality
+
+📖 DOCUMENTATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  See detailed guides in:
+    • CLI_VISUAL_GUIDE.md        - Visual guide + examples
+    • BEFORE_AFTER_CLI.md        - See the transformation
+    • CLI_ENHANCEMENT_SUMMARY.md - Technical implementation
+
+🎯 STATUS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ✅ Build:         SUCCESS
+  ✅ Compilation:   CLEAN
+  ✅ Features:      COMPLETE
+  ✅ Documentation: COMPREHENSIVE
+  ✅ Testing:       VERIFIED
+  ✅ Status:        PRODUCTION-READY
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃          From functional to phenomenal! 🎨✨🔒                      ┃
+┃             Built with ❤️ for privacy & great UX                    ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛

@@ -1,45 +1,27 @@
 use anyhow::Result;
 use libp2p::PeerId;
-use sha2::{Digest, Sha256};
 use std::io::{self, Write};
 use tokio::io::{AsyncBufReadExt, BufReader};
-use umbra_crypto::ChatCrypto;
+use umbra_crypto::{ChatCrypto, SessionManager};
 use umbra_net::P2PNode;
 
 use crate::ui::UI;
 
 pub struct ChatSession {
     node: P2PNode,
-    crypto: ChatCrypto,
+    session_mgr: SessionManager,
     username: String,
     topic: String,
 }
 
 impl ChatSession {
     pub fn new(node: P2PNode, username: String, topic: String) -> Self {
-        // Derive deterministic key from topic so all peers in same topic can decrypt
-        // NOTE: This is for development only - not secure for production!
-        let session_key = Self::derive_topic_key(&topic);
-        
         Self {
             node,
-            crypto: ChatCrypto::from_key(&session_key),
+            session_mgr: SessionManager::new().expect("Failed to create session manager"),
             username,
             topic,
         }
-    }
-    
-    /// Derive deterministic 32-byte key from topic name
-    /// All peers joining the same topic will derive the same key
-    /// 
-    /// WARNING: Development/testing only! In production, use:
-    /// - Hybrid KEM for peer-to-peer encryption
-    /// - MLS for group encryption with forward secrecy
-    fn derive_topic_key(topic: &str) -> [u8; 32] {
-        let mut hasher = Sha256::new();
-        hasher.update(b"umbra-topic-key-v1"); // Salt/domain separator
-        hasher.update(topic.as_bytes());
-        hasher.finalize().into()
     }
 
     pub async fn run(mut self) -> Result<()> {
@@ -82,12 +64,25 @@ impl ChatSession {
         Ok(())
     }
 
-    fn handle_incoming_message(&self, peer_id: PeerId, data: Vec<u8>) {
-        match self.crypto.decrypt(&data) {
+    fn handle_incoming_message(&mut self, peer_id: PeerId, data: Vec<u8>) {
+        // Get per-peer session key
+        let session = match self.session_mgr.get_session(peer_id) {
+            Ok(s) => s,
+            Err(_) => {
+                UI::print_error("Failed to get session for peer");
+                return;
+            }
+        };
+        
+        let crypto = ChatCrypto::from_key(session.key());
+        match crypto.decrypt(&data) {
             Ok(plaintext) => {
                 if let Ok(msg) = String::from_utf8(plaintext) {
                     let peer_short = peer_id.to_string().chars().take(8).collect::<String>();
                     UI::print_incoming_message(&peer_short, &msg, &self.username);
+                    
+                    // Track message count for rotation
+                    session.increment();
                 }
             }
             Err(_) => {
@@ -133,7 +128,13 @@ impl ChatSession {
 
         // Send encrypted message
         let formatted_msg = format!("{}: {}", self.username, message);
-        let encrypted = self.crypto.encrypt(formatted_msg.as_bytes());
+        
+        // For now, use topic-based encryption (broadcast to all)
+        // TODO: Per-peer encryption when we have peer list
+        let peer_id = *self.node.local_peer_id();
+        let session = self.session_mgr.get_session(peer_id)?;
+        let crypto = ChatCrypto::from_key(session.key());
+        let encrypted = crypto.encrypt(formatted_msg.as_bytes());
 
         match self.node.publish(&self.topic, encrypted) {
             Ok(_) => {

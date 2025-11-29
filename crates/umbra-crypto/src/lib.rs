@@ -4,6 +4,7 @@ pub mod identity;
 pub mod aead;
 pub mod chat_crypto;
 pub mod session;
+pub mod handshake;
 
 pub use error::{CryptoError, Result};
 pub use kem::{HybridKem, HybridSharedSecret};
@@ -11,6 +12,7 @@ pub use identity::{IdentityKey, HybridSignature};
 pub use aead::Envelope;
 pub use chat_crypto::ChatCrypto;
 pub use session::{SessionManager, SessionKey};
+pub use handshake::{Handshake, HandshakeInit, HandshakeResp};
 
 /// Re-export commonly used types
 pub mod prelude {
@@ -20,4 +22,5 @@ pub mod prelude {
     pub use crate::aead::Envelope;
     pub use crate::chat_crypto::ChatCrypto;
     pub use crate::session::{SessionManager, SessionKey};
+    pub use crate::handshake::{Handshake, HandshakeInit, HandshakeResp};
 }

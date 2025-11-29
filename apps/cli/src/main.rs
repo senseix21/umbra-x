@@ -1,10 +1,12 @@
 mod chat;
+mod ui;
 
 use anyhow::Result;
 use chat::ChatSession;
 use clap::{Parser, Subcommand};
 use tracing::info;
 use umbra_net::P2PNode;
+use ui::UI;
 
 #[derive(Parser)]
 #[command(name = "umbra")]
@@ -58,50 +60,41 @@ async fn main() -> Result<()> {
 }
 
 async fn start_chat(port: Option<u16>, connect: Option<String>, topic: String, username: String) -> Result<()> {
-    println!("\n╔════════════════════════════════════════════════════════════════╗");
-    println!("║              UMBRA.chat - Secure P2P Messaging                 ║");
-    println!("║  Post-quantum encrypted • No servers • No trace • No spam      ║");
-    println!("╚════════════════════════════════════════════════════════════════╝\n");
+    UI::print_banner();
     
     // Create node with specific port if provided
     let mut node = if let Some(p) = port {
         info!("Starting node on port {}...", p);
+        UI::print_spinner("Initializing P2P node...");
         P2PNode::new_with_port(p).await?
     } else {
         info!("Starting node on random port...");
+        UI::print_spinner("Initializing P2P node...");
         P2PNode::new().await?
     };
     
     let peer_id = node.local_peer_id();
     let addrs = node.listening_addresses();
     
-    println!("✓ Node started successfully!");
-    println!("✓ Your Peer ID: {}", peer_id);
-    println!("✓ Listening on:");
-    for addr in &addrs {
-        println!("  {}", addr);
-    }
+    UI::print_success("Node started successfully!");
+    UI::print_node_info(peer_id, &addrs);
     
     // Subscribe to topic
     node.subscribe(&topic)?;
-    println!("✓ Subscribed to topic: {}", topic);
+    UI::print_success(&format!("Subscribed to topic: {}", topic));
     
     // Connect to peer if specified
     if let Some(peer_addr) = connect {
-        println!("\n📞 Connecting to peer: {}", peer_addr);
+        UI::print_connecting(&peer_addr);
         let addr: libp2p::Multiaddr = peer_addr.parse()?;
         node.dial(addr).await?;
-        println!("✓ Connection initiated");
+        UI::print_success("Connection initiated");
         
         // Give time for connection to establish
         tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
     }
     
-    println!("\n┌────────────────────────────────────────────────────────────────┐");
-    println!("│  Chat Ready! Type your message and press Enter to send.       │");
-    println!("│  All messages are encrypted with post-quantum crypto.         │");
-    println!("│  Commands: /help /peers /quit                                 │");
-    println!("└────────────────────────────────────────────────────────────────┘\n");
+    UI::print_chat_ready();
     
     // Create and run chat session
     let session = ChatSession::new(node, username, topic);
@@ -111,24 +104,6 @@ async fn start_chat(port: Option<u16>, connect: Option<String>, topic: String, u
 }
 
 async fn show_info() -> Result<()> {
-    println!("\n╔════════════════════════════════════════════════════════════════╗");
-    println!("║                    UMBRA.chat - Project Info                   ║");
-    println!("╚════════════════════════════════════════════════════════════════╝\n");
-    println!("Version: 0.1.0-alpha");
-    println!("Protocol: QUIC + libp2p");
-    println!("Encryption: Post-quantum hybrid (X25519 + ML-KEM)");
-    println!("Messaging: MLS (Messaging Layer Security)");
-    println!("Privacy: Onion routing + cover traffic");
-    println!("Anti-spam: Zero-knowledge rate limiting\n");
-    println!("Features:");
-    println!("  ✓ P2P mesh networking (libp2p + QUIC)");
-    println!("  ✓ Post-quantum cryptography");
-    println!("  ✓ End-to-end encrypted groups (MLS)");
-    println!("  ✓ Zero-knowledge proofs (RLN)");
-    println!("  ✓ RAM-only mode (ephemeral)");
-    println!("  ✓ Onion routing (3-hop circuits)");
-    println!("  ✓ Cover traffic for metadata protection\n");
-    println!("For more info: https://github.com/yourusername/umbra-chat\n");
-    
+    UI::print_info();
     Ok(())
 }

@@ -1,9 +1,12 @@
 use anyhow::Result;
 use libp2p::PeerId;
+use sha2::{Digest, Sha256};
 use std::io::{self, Write};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use umbra_crypto::ChatCrypto;
 use umbra_net::P2PNode;
+
+use crate::ui::UI;
 
 pub struct ChatSession {
     node: P2PNode,
@@ -14,12 +17,29 @@ pub struct ChatSession {
 
 impl ChatSession {
     pub fn new(node: P2PNode, username: String, topic: String) -> Self {
+        // Derive deterministic key from topic so all peers in same topic can decrypt
+        // NOTE: This is for development only - not secure for production!
+        let session_key = Self::derive_topic_key(&topic);
+        
         Self {
             node,
-            crypto: ChatCrypto::new(),
+            crypto: ChatCrypto::from_key(&session_key),
             username,
             topic,
         }
+    }
+    
+    /// Derive deterministic 32-byte key from topic name
+    /// All peers joining the same topic will derive the same key
+    /// 
+    /// WARNING: Development/testing only! In production, use:
+    /// - Hybrid KEM for peer-to-peer encryption
+    /// - MLS for group encryption with forward secrecy
+    fn derive_topic_key(topic: &str) -> [u8; 32] {
+        let mut hasher = Sha256::new();
+        hasher.update(b"umbra-topic-key-v1"); // Salt/domain separator
+        hasher.update(topic.as_bytes());
+        hasher.finalize().into()
     }
 
     pub async fn run(mut self) -> Result<()> {
@@ -33,15 +53,14 @@ impl ChatSession {
         let stdin = tokio::io::stdin();
         let mut reader = BufReader::new(stdin).lines();
 
-        println!("{}> ", self.username);
-        io::stdout().flush()?;
+        UI::print_prompt(&self.username);
 
         loop {
             tokio::select! {
                 // Handle network events (non-blocking poll)
                 event = self.node.poll_once() => {
                     if let Err(e) = event {
-                        eprintln!("Network error: {}", e);
+                        UI::print_error(&format!("Network error: {}", e));
                         break;
                     }
                 }
@@ -68,13 +87,12 @@ impl ChatSession {
             Ok(plaintext) => {
                 if let Ok(msg) = String::from_utf8(plaintext) {
                     let peer_short = peer_id.to_string().chars().take(8).collect::<String>();
-                    println!("\r[{}] {}", peer_short, msg);
-                    print!("{}> ", self.username);
-                    io::stdout().flush().ok();
+                    UI::print_incoming_message(&peer_short, &msg, &self.username);
                 }
             }
-            Err(e) => {
-                eprintln!("Decryption failed: {}", e);
+            Err(_) => {
+                UI::print_decryption_error();
+                UI::print_prompt(&self.username);
             }
         }
     }
@@ -82,28 +100,34 @@ impl ChatSession {
     async fn handle_user_input(&mut self, line: &str) -> Result<bool> {
         let message = line.trim();
         if message.is_empty() {
-            print!("{}> ", self.username);
-            io::stdout().flush()?;
+            UI::print_prompt(&self.username);
             return Ok(true);
         }
 
         // Handle commands
         if message == "/quit" || message == "/exit" {
-            println!("Goodbye!");
+            UI::print_goodbye();
             return Ok(false);
         }
 
         if message == "/help" {
-            self.print_help();
-            print!("{}> ", self.username);
-            io::stdout().flush()?;
+            UI::print_help();
+            UI::print_prompt(&self.username);
             return Ok(true);
         }
 
         if message == "/peers" {
-            self.show_peers();
-            print!("{}> ", self.username);
-            io::stdout().flush()?;
+            let peers = self.node.connected_peers();
+            let peer_id = self.node.local_peer_id();
+            let addrs = self.node.listening_addresses();
+            UI::print_peers_info(peer_id, &addrs, peers);
+            UI::print_prompt(&self.username);
+            return Ok(true);
+        }
+
+        if message == "/clear" {
+            UI::clear_screen();
+            UI::print_prompt(&self.username);
             return Ok(true);
         }
 
@@ -113,45 +137,14 @@ impl ChatSession {
 
         match self.node.publish(&self.topic, encrypted) {
             Ok(_) => {
-                println!("✓ Sent (encrypted)");
+                UI::print_message_sent();
             }
             Err(e) => {
-                println!("✗ Failed to send: {}", e);
+                UI::print_message_failed(&e.to_string());
             }
         }
 
-        print!("{}> ", self.username);
-        io::stdout().flush()?;
+        UI::print_prompt(&self.username);
         Ok(true)
-    }
-
-    fn print_help(&self) {
-        println!("\n┌─ UMBRA Chat Commands ─────────────────────────────────────────┐");
-        println!("│  /help     - Show this help message                           │");
-        println!("│  /peers    - Show connected peers and your info               │");
-        println!("│  /quit     - Exit the chat                                    │");
-        println!("│  /exit     - Exit the chat                                    │");
-        println!("└────────────────────────────────────────────────────────────────┘\n");
-    }
-
-    fn show_peers(&self) {
-        println!("\n┌─ Peer Information ────────────────────────────────────────────┐");
-        println!("│ Your Peer ID: {}", self.node.local_peer_id());
-        println!("│");
-        println!("│ Listening addresses:");
-        for addr in self.node.listening_addresses() {
-            println!("│   {}", addr);
-        }
-        println!("│");
-        println!("│ Connected peers:");
-        let peers = self.node.connected_peers();
-        if peers.is_empty() {
-            println!("│   (none)");
-        } else {
-            for peer in peers {
-                println!("│   {}", peer);
-            }
-        }
-        println!("└────────────────────────────────────────────────────────────────┘\n");
     }
 }

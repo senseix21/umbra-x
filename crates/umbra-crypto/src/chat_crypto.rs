@@ -10,10 +10,17 @@ pub struct ChatCrypto {
 
 impl ChatCrypto {
     /// Create new chat crypto with random key
+    /// WARNING: For testing only - each instance has different key!
     pub fn new() -> Self {
         let key = ChaCha20Poly1305::generate_key(&mut OsRng);
         let envelope = Envelope::new(&key).expect("Failed to create envelope");
         
+        Self { envelope }
+    }
+    
+    /// Create from explicit 32-byte key (for shared session keys)
+    pub fn from_key(key: &[u8; 32]) -> Self {
+        let envelope = Envelope::new(key).expect("Failed to create envelope");
         Self { envelope }
     }
 
@@ -45,6 +52,19 @@ mod tests {
         
         let encrypted = crypto.encrypt(message);
         let decrypted = crypto.decrypt(&encrypted).unwrap();
+        
+        assert_eq!(decrypted, message);
+    }
+    
+    #[test]
+    fn test_from_key_shared_encryption() {
+        let key = [42u8; 32];
+        let crypto1 = ChatCrypto::from_key(&key);
+        let crypto2 = ChatCrypto::from_key(&key);
+        
+        let message = b"Shared key test";
+        let encrypted = crypto1.encrypt(message);
+        let decrypted = crypto2.decrypt(&encrypted).unwrap();
         
         assert_eq!(decrypted, message);
     }

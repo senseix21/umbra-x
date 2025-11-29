@@ -34,3 +34,12 @@ coverage/
 # OS
 .DS_Store
 Thumbs.db
+
+# Documentation - exclude all markdown files except main ones
+*.md
+!README.md
+!ROADMAP.md
+!CHANGELOG.md
+!CODE_OF_CONDUCT.md
+!CONTRIBUTING.md
+!SECURITY.md

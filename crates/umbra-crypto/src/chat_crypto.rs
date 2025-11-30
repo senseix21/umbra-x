@@ -68,4 +68,117 @@ mod tests {
         
         assert_eq!(decrypted, message);
     }
+
+    #[test]
+    fn test_empty_message() {
+        let crypto = ChatCrypto::new();
+        let message = b"";
+        
+        let encrypted = crypto.encrypt(message);
+        let decrypted = crypto.decrypt(&encrypted).unwrap();
+        
+        assert_eq!(decrypted, message);
+    }
+
+    #[test]
+    fn test_large_message() {
+        let crypto = ChatCrypto::new();
+        let message = vec![0x42; 10000]; // 10KB message
+        
+        let encrypted = crypto.encrypt(&message);
+        let decrypted = crypto.decrypt(&encrypted).unwrap();
+        
+        assert_eq!(decrypted, message);
+    }
+
+    #[test]
+    fn test_different_keys_cant_decrypt() {
+        let key1 = [1u8; 32];
+        let key2 = [2u8; 32];
+        let crypto1 = ChatCrypto::from_key(&key1);
+        let crypto2 = ChatCrypto::from_key(&key2);
+        
+        let message = b"Secret";
+        let encrypted = crypto1.encrypt(message);
+        
+        // Should fail to decrypt
+        let result = crypto2.decrypt(&encrypted);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_tampered_ciphertext() {
+        let crypto = ChatCrypto::new();
+        let message = b"Original message";
+        
+        let mut encrypted = crypto.encrypt(message);
+        
+        // Tamper with ciphertext
+        if let Some(byte) = encrypted.last_mut() {
+            *byte = byte.wrapping_add(1);
+        }
+        
+        // Should fail authentication
+        let result = crypto.decrypt(&encrypted);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_encrypted_is_different() {
+        let crypto = ChatCrypto::new();
+        let message = b"Test";
+        
+        let encrypted1 = crypto.encrypt(message);
+        let encrypted2 = crypto.encrypt(message);
+        
+        // Nonces should make them different
+        assert_ne!(encrypted1, encrypted2);
+        
+        // Both should decrypt correctly
+        assert_eq!(crypto.decrypt(&encrypted1).unwrap(), message);
+        assert_eq!(crypto.decrypt(&encrypted2).unwrap(), message);
+    }
+
+    #[test]
+    fn test_multiple_messages() {
+        let crypto = ChatCrypto::new();
+        let messages = vec![
+            b"Message 1".to_vec(),
+            b"Message 2".to_vec(),
+            b"Message 3".to_vec(),
+        ];
+        
+        let encrypted: Vec<_> = messages.iter()
+            .map(|m| crypto.encrypt(m))
+            .collect();
+        
+        let decrypted: Vec<_> = encrypted.iter()
+            .map(|e| crypto.decrypt(e).unwrap())
+            .collect();
+        
+        assert_eq!(messages, decrypted);
+    }
+
+    #[test]
+    fn test_unicode_message() {
+        let crypto = ChatCrypto::new();
+        let message = "Hello 世界 🌍".as_bytes();
+        
+        let encrypted = crypto.encrypt(message);
+        let decrypted = crypto.decrypt(&encrypted).unwrap();
+        
+        assert_eq!(decrypted, message);
+        assert_eq!(String::from_utf8(decrypted).unwrap(), "Hello 世界 🌍");
+    }
+
+    #[test]
+    fn test_ciphertext_is_longer() {
+        let crypto = ChatCrypto::new();
+        let message = b"Short";
+        
+        let encrypted = crypto.encrypt(message);
+        
+        // Ciphertext should be longer (includes nonce + tag)
+        assert!(encrypted.len() > message.len());
+    }
 }

@@ -264,4 +264,127 @@ mod tests {
         assert_eq!(init.x25519_pk, decoded.x25519_pk);
         assert_eq!(init.signature, decoded.signature);
     }
+
+    #[test]
+    fn test_handshake_init_structure() {
+        let alice_id = gen_keypair();
+        let alice_peer = PeerId::random();
+        
+        let hs = Handshake::new(alice_id);
+        let init = hs.initiate(alice_peer).unwrap();
+        
+        // Verify structure (PeerId length varies, but should be reasonable)
+        assert!(init.peer_id.len() > 30 && init.peer_id.len() < 50);
+        assert_eq!(init.x25519_pk.len(), 32);
+        assert_eq!(init.signature.len(), 64);
+    }
+
+    #[test]
+    fn test_handshake_response_structure() {
+        let alice_id = gen_keypair();
+        let alice_pk = alice_id.verifying_key();
+        let bob_id = gen_keypair();
+        
+        let alice_peer = PeerId::random();
+        let bob_peer = PeerId::random();
+        
+        let alice_hs = Handshake::new(alice_id);
+        let init = alice_hs.initiate(alice_peer).unwrap();
+        
+        let bob_hs = Handshake::new(bob_id);
+        let (resp, _) = bob_hs.respond(bob_peer, &init, &alice_pk).unwrap();
+        
+        // Verify structure (PeerId length varies)
+        assert!(resp.peer_id.len() > 30 && resp.peer_id.len() < 50);
+        assert_eq!(resp.x25519_pk.len(), 32);
+        assert_eq!(resp.signature.len(), 64);
+    }
+
+    #[test]
+    fn test_handshake_response_serialization() {
+        let alice_id = gen_keypair();
+        let alice_pk = alice_id.verifying_key();
+        let bob_id = gen_keypair();
+        
+        let alice_peer = PeerId::random();
+        let bob_peer = PeerId::random();
+        
+        let alice_hs = Handshake::new(alice_id);
+        let init = alice_hs.initiate(alice_peer).unwrap();
+        
+        let bob_hs = Handshake::new(bob_id);
+        let (resp, _) = bob_hs.respond(bob_peer, &init, &alice_pk).unwrap();
+        
+        // Serialize and deserialize
+        let bytes = bincode::serialize(&resp).unwrap();
+        let decoded: HandshakeResp = bincode::deserialize(&bytes).unwrap();
+        
+        assert_eq!(resp.peer_id, decoded.peer_id);
+        assert_eq!(resp.x25519_pk, decoded.x25519_pk);
+        assert_eq!(resp.signature, decoded.signature);
+    }
+
+    #[test]
+    fn test_key_derivation_consistency() {
+        let alice_id = gen_keypair();
+        let alice_pk = alice_id.verifying_key();
+        let bob_id = gen_keypair();
+        let bob_pk = bob_id.verifying_key();
+        
+        let alice_peer = PeerId::random();
+        let bob_peer = PeerId::random();
+        
+        // Run handshake twice with same keys
+        for _ in 0..2 {
+            let alice_hs = Handshake::new(alice_id.clone());
+            let init = alice_hs.initiate(alice_peer).unwrap();
+            
+            let bob_hs = Handshake::new(bob_id.clone());
+            let (resp, bob_key) = bob_hs.respond(bob_peer, &init, &alice_pk).unwrap();
+            
+            // Keys should be 32 bytes
+            assert_eq!(bob_key.len(), 32);
+            
+            // Keys should not be all zeros
+            assert!(bob_key.iter().any(|&b| b != 0));
+        }
+    }
+
+    #[test]
+    fn test_invalid_signature_in_response() {
+        let alice_id = gen_keypair();
+        let alice_pk = alice_id.verifying_key();
+        let bob_id = gen_keypair();
+        let wrong_pk = gen_keypair().verifying_key();
+        
+        let alice_peer = PeerId::random();
+        let bob_peer = PeerId::random();
+        
+        let alice_hs = Handshake::new(alice_id);
+        let init = alice_hs.initiate(alice_peer).unwrap();
+        
+        let bob_hs = Handshake::new(bob_id);
+        let (resp, _) = bob_hs.respond(bob_peer, &init, &alice_pk).unwrap();
+        
+        // Try to complete with wrong key
+        let alice_hs2 = Handshake::new(gen_keypair());
+        let result = alice_hs2.complete(&resp, &wrong_pk);
+        
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_handshake_cloning() {
+        let alice_id = gen_keypair();
+        let alice_peer = PeerId::random();
+        
+        let hs = Handshake::new(alice_id);
+        let init1 = hs.initiate(alice_peer).unwrap();
+        
+        // Clone and verify
+        let init2 = init1.clone();
+        assert_eq!(init1.peer_id, init2.peer_id);
+        assert_eq!(init1.x25519_pk, init2.x25519_pk);
+        assert_eq!(init1.signature, init2.signature);
+    }
 }

@@ -253,4 +253,128 @@ mod tests {
         mgr.register_peer(peer, peer_key);
         assert!(mgr.peer_keys.contains_key(&peer));
     }
+
+    #[test]
+    fn test_session_increment() {
+        let mut mgr = SessionManager::new().unwrap();
+        let peer = PeerId::random();
+        
+        let session = mgr.get_session(peer).unwrap();
+        assert_eq!(session.msg_count, 0);
+        
+        session.increment();
+        assert_eq!(session.msg_count, 1);
+        
+        session.increment();
+        assert_eq!(session.msg_count, 2);
+    }
+
+    #[test]
+    fn test_session_age() {
+        let mut mgr = SessionManager::new().unwrap();
+        let peer = PeerId::random();
+        
+        let session = mgr.get_session(peer).unwrap();
+        let age = session.age();
+        
+        // Should be very recent
+        assert!(age.as_secs() < 1);
+    }
+
+    #[test]
+    fn test_max_sessions_eviction() {
+        let mut mgr = SessionManager::new().unwrap();
+        
+        // Create MAX_SESSIONS + 1 sessions
+        for _ in 0..=MAX_SESSIONS {
+            let peer = PeerId::random();
+            mgr.get_session(peer).unwrap();
+        }
+        
+        // Should have evicted oldest
+        assert_eq!(mgr.session_count(), MAX_SESSIONS);
+    }
+
+    #[test]
+    fn test_session_expiry_and_cleanup() {
+        let mut mgr = SessionManager::new().unwrap();
+        let peer = PeerId::random();
+        
+        // Get initial session
+        let session = mgr.get_session(peer).unwrap();
+        session.msg_count = 1000; // Mark for expiry
+        
+        // Cleanup should remove it
+        mgr.cleanup();
+        assert_eq!(mgr.session_count(), 0);
+        
+        // New session created on next access
+        let session2 = mgr.get_session(peer).unwrap();
+        assert_eq!(session2.msg_count, 0); // Fresh session
+    }
+
+    #[test]
+    fn test_handshake_initiate() {
+        let mgr = SessionManager::new().unwrap();
+        let peer = PeerId::random();
+        
+        let init = mgr.initiate_handshake(peer).unwrap();
+        assert_eq!(init.peer_id, peer.to_bytes());
+        assert_eq!(init.x25519_pk.len(), 32);
+        assert_eq!(init.signature.len(), 64);
+    }
+
+    #[test]
+    fn test_handshake_respond_without_peer_key() {
+        let mut mgr = SessionManager::new().unwrap();
+        let peer = PeerId::random();
+        
+        let init = HandshakeInit {
+            peer_id: peer.to_bytes(),
+            x25519_pk: [0u8; 32],
+            signature: [0u8; 64],
+        };
+        
+        // Should fail - peer not registered
+        let result = mgr.respond_handshake(peer, &init);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_multiple_peer_sessions() {
+        let mut mgr = SessionManager::new().unwrap();
+        let peers: Vec<_> = (0..10).map(|_| PeerId::random()).collect();
+        
+        // Create sessions for all peers
+        for peer in &peers {
+            mgr.get_session(*peer).unwrap();
+        }
+        
+        assert_eq!(mgr.session_count(), 10);
+        
+        // Each should have unique key
+        let keys: Vec<_> = peers.iter()
+            .map(|p| *mgr.get_session(*p).unwrap().key())
+            .collect();
+        
+        for i in 0..keys.len() {
+            for j in i+1..keys.len() {
+                assert_ne!(keys[i], keys[j]);
+            }
+        }
+    }
+
+    #[test]
+    fn test_session_key_deterministic() {
+        let mut mgr = SessionManager::new().unwrap();
+        let peer = PeerId::random();
+        
+        // Same peer should get same key (until rotation)
+        let key1 = *mgr.get_session(peer).unwrap().key();
+        let key2 = *mgr.get_session(peer).unwrap().key();
+        let key3 = *mgr.get_session(peer).unwrap().key();
+        
+        assert_eq!(key1, key2);
+        assert_eq!(key2, key3);
+    }
 }

@@ -2,6 +2,7 @@ pub mod error;
 pub mod transport;
 pub mod circuit;
 pub mod cover;
+pub mod handshake;
 
 pub use error::{NetError, Result};
 pub use transport::P2PNode;

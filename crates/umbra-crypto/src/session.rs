@@ -83,7 +83,7 @@ impl SessionManager {
 
     /// Initiate handshake with peer
     pub fn initiate_handshake(&self, peer: PeerId) -> Result<HandshakeInit> {
-        let hs = Handshake::new(self.identity.clone());
+        let hs = Handshake::new(self.identity.clone())?;
         hs.initiate(peer)
     }
 
@@ -98,7 +98,7 @@ impl SessionManager {
                 "Peer key not registered".to_string()
             ))?;
 
-        let hs = Handshake::new(self.identity.clone());
+        let hs = Handshake::new(self.identity.clone())?;
         hs.respond(peer, init, peer_key)
     }
 
@@ -113,7 +113,7 @@ impl SessionManager {
                 "Peer key not registered".to_string()
             ))?;
 
-        let hs = Handshake::new(self.identity.clone());
+        let hs = Handshake::new(self.identity.clone())?;
         let session_key = hs.complete(resp, peer_key)?;
         
         self.sessions.insert(peer, SessionKey::new(session_key));

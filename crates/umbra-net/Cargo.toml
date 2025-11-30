@@ -27,6 +27,7 @@ uuid = { workspace = true }
 # Internal
 umbra-wire = { path = "../umbra-wire" }
 umbra-crypto = { path = "../umbra-crypto" }
+ed25519-dalek = { workspace = true }
 
 [dev-dependencies]
 tracing-subscriber = { workspace = true }

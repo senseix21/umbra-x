@@ -8,6 +8,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::time::Duration;
 use tracing::{info, warn};
+use crate::handshake::{HandshakeBehaviour, HandshakeEvent};
 
 /// Combined network behaviour for UMBRA P2P
 #[derive(NetworkBehaviour)]
@@ -17,6 +18,7 @@ pub struct UmbraBehaviour {
     identify: identify::Behaviour,
     kad: kad::Behaviour<kad::store::MemoryStore>,
     gossipsub: gossipsub::Behaviour,
+    handshake: HandshakeBehaviour,
 }
 
 #[derive(Debug)]
@@ -25,6 +27,7 @@ pub enum UmbraEvent {
     Identify(identify::Event),
     Kad(kad::Event),
     Gossipsub(gossipsub::Event),
+    Handshake(HandshakeEvent),
 }
 
 impl From<ping::Event> for UmbraEvent {
@@ -48,6 +51,12 @@ impl From<kad::Event> for UmbraEvent {
 impl From<gossipsub::Event> for UmbraEvent {
     fn from(event: gossipsub::Event) -> Self {
         UmbraEvent::Gossipsub(event)
+    }
+}
+
+impl From<HandshakeEvent> for UmbraEvent {
+    fn from(event: HandshakeEvent) -> Self {
+        UmbraEvent::Handshake(event)
     }
 }
 
@@ -98,6 +107,11 @@ impl P2PNode {
                 kad::store::MemoryStore::new(local_peer_id),
             ),
             gossipsub,
+            handshake: {
+                // Generate signing key for handshake
+                let signing_key = ed25519_dalek::SigningKey::from_bytes(&rand::random());
+                HandshakeBehaviour::new(signing_key)
+            },
         };
         
         // Create swarm with QUIC transport (libp2p 0.53 API)
@@ -214,11 +228,30 @@ impl P2PNode {
                         // Forward message to application layer
                         let _ = self.message_tx.send((propagation_source, message.data));
                     }
+                    UmbraEvent::Handshake(event) => {
+                        use crate::handshake::HandshakeEvent;
+                        match event {
+                            HandshakeEvent::Completed { peer_id, session_key: _ } => {
+                                info!("✅ Quantum-safe handshake completed with {}", peer_id);
+                            }
+                            HandshakeEvent::Failed { peer_id, error } => {
+                                warn!("❌ Handshake with {} failed: {}", peer_id, error);
+                            }
+                        }
+                    }
                     _ => {}
                 }
             }
             SwarmEvent::ConnectionEstablished { peer_id, endpoint, .. } => {
                 info!("✓ Connected to {} via {:?}", peer_id, endpoint);
+                
+                // Auto-initiate quantum-safe handshake
+                if self.swarm.behaviour().handshake.get_session_key(&peer_id).is_none() {
+                    info!("🔐 Initiating quantum-safe handshake with {}", peer_id);
+                    if let Err(e) = self.swarm.behaviour_mut().handshake.initiate_handshake(peer_id) {
+                        warn!("Failed to initiate handshake: {}", e);
+                    }
+                }
             }
             SwarmEvent::ConnectionClosed { peer_id, cause, .. } => {
                 info!("Connection to {} closed: {:?}", peer_id, cause);
@@ -240,6 +273,23 @@ impl P2PNode {
         loop {
             self.poll_once().await?;
         }
+    }
+
+    // Handshake methods
+    
+    /// Register a peer's verify key (must be done before handshake)
+    pub fn register_peer_key(&mut self, peer_id: PeerId, verify_key: ed25519_dalek::VerifyingKey) {
+        self.swarm.behaviour_mut().handshake.register_peer(peer_id, verify_key);
+    }
+    
+    /// Get session key for a peer (if handshake completed)
+    pub fn get_session_key(&self, peer_id: &PeerId) -> Option<&[u8; 32]> {
+        self.swarm.behaviour().handshake.get_session_key(peer_id)
+    }
+    
+    /// Initiate handshake with a peer (for manual testing)
+    pub fn initiate_handshake(&mut self, peer_id: PeerId) -> Result<(), String> {
+        self.swarm.behaviour_mut().handshake.initiate_handshake(peer_id)
     }
 }
 

@@ -1,5 +1,12 @@
 use serde::{Deserialize, Serialize};
 
+pub mod error;
+pub mod handshake;
+pub mod framing;
+pub mod convert;
+
+pub use error::{WireError, Result};
+
 pub const PROTOCOL_VERSION: u32 = 1;
 pub const FRAME_SIZE: usize = 512;
 
@@ -33,13 +40,11 @@ impl MessageEnvelope {
         }
     }
     
-    /// Pad message to fixed frame size
     pub fn to_fixed_frame(&self) -> Vec<u8> {
         let serialized = serde_json::to_vec(self).unwrap();
         let mut frame = vec![0u8; FRAME_SIZE];
         
         if serialized.len() > FRAME_SIZE {
-            // Fragment if needed (simplified for now)
             frame.copy_from_slice(&serialized[..FRAME_SIZE]);
         } else {
             frame[..serialized.len()].copy_from_slice(&serialized);
@@ -48,14 +53,14 @@ impl MessageEnvelope {
         frame
     }
     
-    pub fn from_frame(frame: &[u8]) -> Result<Self, serde_json::Error> {
-        // Find actual message end (before padding)
+    pub fn from_frame(frame: &[u8]) -> Result<Self> {
         let trimmed = frame.iter()
             .position(|&x| x == 0)
             .map(|pos| &frame[..pos])
             .unwrap_or(frame);
         
         serde_json::from_slice(trimmed)
+            .map_err(|e| WireError::Serialization(e.to_string()))
     }
 }
 

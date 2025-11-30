@@ -13,6 +13,9 @@ serde_json = { workspace = true }
 bytes = { workspace = true }
 thiserror = { workspace = true }
 rand = { workspace = true }
+umbra-crypto = { path = "../umbra-crypto" }
+ed25519-dalek = { workspace = true }
+libp2p = { workspace = true }
 
 [build-dependencies]
 prost-build = "0.13"

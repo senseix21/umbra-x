@@ -171,8 +171,9 @@ mod tests {
 
     #[test]
     fn test_message_roundtrip() {
-        let mut alice = MessageExchange::new(PeerId::random()).unwrap();
-        let mut bob = MessageExchange::new(PeerId::random()).unwrap();
+        let shared_peer_id = PeerId::random(); // Use same PeerID for both to derive same symmetric key
+        let mut alice = MessageExchange::new(shared_peer_id).unwrap();
+        let mut bob = MessageExchange::new(shared_peer_id).unwrap();
         
         let peer_id = PeerId::random();
 
@@ -187,7 +188,7 @@ mod tests {
             "hello bob!",
         ).unwrap();
 
-        // Bob decrypts (same peer ID means same derived key)
+        // Bob decrypts (same local_peer_id means same derived symmetric key)
         let (username, content) = bob.decrypt_message(peer_id, &encrypted).unwrap();
         
         assert_eq!(username, "alice");

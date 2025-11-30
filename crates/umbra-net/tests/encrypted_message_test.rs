@@ -5,8 +5,8 @@ use libp2p::PeerId;
 
 #[test]
 fn test_message_exchange_roundtrip() {
-    let mut alice = MessageExchange::new().unwrap();
-    let mut bob = MessageExchange::new().unwrap();
+    let mut alice = MessageExchange::new(PeerId::random()).unwrap();
+    let mut bob = MessageExchange::new(PeerId::random()).unwrap();
     
     let peer_id = PeerId::random(); // Use same peer ID for same session
     
@@ -32,8 +32,8 @@ fn test_message_exchange_roundtrip() {
 
 #[test]
 fn test_message_exchange_wrong_peer() {
-    let mut alice = MessageExchange::new().unwrap();
-    let mut eve = MessageExchange::new().unwrap();
+    let mut alice = MessageExchange::new(PeerId::random()).unwrap();
+    let mut eve = MessageExchange::new(PeerId::random()).unwrap();
     
     let alice_peer = PeerId::random();
     let eve_peer = PeerId::random();
@@ -56,7 +56,7 @@ fn test_message_exchange_wrong_peer() {
 
 #[test]
 fn test_message_exchange_multiple_messages() {
-    let mut alice = MessageExchange::new().unwrap();
+    let mut alice = MessageExchange::new(PeerId::random()).unwrap();
     let peer = PeerId::random();
     
     // Send 5 messages
@@ -74,8 +74,8 @@ fn test_message_exchange_multiple_messages() {
 
 #[test]
 fn test_signature_verification_success() {
-    let mut alice = MessageExchange::new().unwrap();
-    let mut bob = MessageExchange::new().unwrap();
+    let mut alice = MessageExchange::new(PeerId::random()).unwrap();
+    let mut bob = MessageExchange::new(PeerId::random()).unwrap();
     
     let alice_peer = PeerId::random();
     
@@ -93,9 +93,9 @@ fn test_signature_verification_success() {
 
 #[test]
 fn test_signature_verification_fails_wrong_key() {
-    let mut alice = MessageExchange::new().unwrap();
-    let mut bob = MessageExchange::new().unwrap();
-    let mut eve = MessageExchange::new().unwrap();
+    let mut alice = MessageExchange::new(PeerId::random()).unwrap();
+    let mut bob = MessageExchange::new(PeerId::random()).unwrap();
+    let mut eve = MessageExchange::new(PeerId::random()).unwrap();
     
     let alice_peer = PeerId::random();
     
@@ -118,8 +118,8 @@ fn test_signature_verification_fails_wrong_key() {
 
 #[test]
 fn test_message_tampering_detected() {
-    let mut alice = MessageExchange::new().unwrap();
-    let mut bob = MessageExchange::new().unwrap();
+    let mut alice = MessageExchange::new(PeerId::random()).unwrap();
+    let mut bob = MessageExchange::new(PeerId::random()).unwrap();
     
     let peer_id = PeerId::random();
     

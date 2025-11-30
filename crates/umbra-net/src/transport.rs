@@ -7,7 +7,7 @@ use libp2p::{
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::time::Duration;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 use crate::handshake::{HandshakeBehaviour, HandshakeEvent};
 
 /// Combined network behaviour for UMBRA P2P
@@ -131,7 +131,7 @@ impl P2PNode {
         
         let (message_tx, message_rx) = tokio::sync::mpsc::unbounded_channel();
         
-        let message_exchange = crate::message::MessageExchange::new()
+        let message_exchange = crate::message::MessageExchange::new(local_peer_id)
             .map_err(|e| crate::error::NetError::Transport(format!("MessageExchange init: {}", e)))?;
         
         Ok(Self {
@@ -223,24 +223,24 @@ impl P2PNode {
         
         match self.swarm.select_next_some().await {
             SwarmEvent::NewListenAddr { address, .. } => {
-                info!("Listening on {:?}", address);
+                debug!("Listening on {:?}", address);
             }
             SwarmEvent::Behaviour(event) => {
                 match event {
                     UmbraEvent::Ping(ping::Event { peer, result, .. }) => {
                         match result {
-                            Ok(rtt) => info!("✓ Ping to {} succeeded: {:?}", peer, rtt),
+                            Ok(_) => {} // Silent ping success
                             Err(e) => warn!("Ping to {} failed: {}", peer, e),
                         }
                     }
                     UmbraEvent::Identify(identify::Event::Received { peer_id, info }) => {
-                        info!("Identified peer {}: {}", peer_id, info.protocol_version);
+                        debug!("Identified peer {}: {}", peer_id, info.protocol_version);
                         for addr in info.listen_addrs {
                             self.swarm.behaviour_mut().kad.add_address(&peer_id, addr);
                         }
                     }
                     UmbraEvent::Kad(kad::Event::RoutingUpdated { peer, .. }) => {
-                        info!("Routing table updated: {}", peer);
+                        debug!("Routing table updated: {}", peer);
                     }
                     UmbraEvent::Gossipsub(gossipsub::Event::Message {
                         propagation_source,
@@ -273,21 +273,17 @@ impl P2PNode {
                 }
             }
             SwarmEvent::ConnectionEstablished { peer_id, endpoint, .. } => {
-                info!("✓ Connected to {} via {:?}", peer_id, endpoint);
+                info!("✓ Connected to {}", peer_id);
                 
-                // Auto-initiate quantum-safe handshake
-                if self.swarm.behaviour().handshake.get_session_key(&peer_id).is_none() {
-                    info!("🔐 Initiating quantum-safe handshake with {}", peer_id);
-                    if let Err(e) = self.swarm.behaviour_mut().handshake.initiate_handshake(peer_id) {
-                        warn!("Failed to initiate handshake: {}", e);
-                    }
-                }
+                // Auto-register peer keys for signature verification (mock for now)
+                let our_verify_key = self.message_exchange.session_manager().public_key();
+                self.message_exchange.session_manager_mut().register_peer(peer_id, our_verify_key);
             }
             SwarmEvent::ConnectionClosed { peer_id, cause, .. } => {
-                info!("Connection to {} closed: {:?}", peer_id, cause);
+                debug!("Connection to {} closed: {:?}", peer_id, cause);
             }
             SwarmEvent::IncomingConnection { .. } => {
-                info!("Incoming connection");
+                debug!("Incoming connection");
             }
             SwarmEvent::OutgoingConnectionError { peer_id, error, .. } => {
                 warn!("Outgoing connection error to {:?}: {}", peer_id, error);

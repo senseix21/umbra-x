@@ -62,16 +62,18 @@ pub struct SessionManager {
     kem: HybridKem,
     sessions: HashMap<PeerId, SessionKey>,
     peer_keys: HashMap<PeerId, VerifyingKey>,
+    local_peer_id: PeerId,
 }
 
 impl SessionManager {
-    pub fn new() -> Result<Self> {
+    pub fn new(local_peer_id: PeerId) -> Result<Self> {
         let identity = SigningKey::from_bytes(&rand::random());
         Ok(Self {
             identity,
             kem: HybridKem::generate()?,
             sessions: HashMap::new(),
             peer_keys: HashMap::new(),
+            local_peer_id,
         })
     }
 
@@ -173,13 +175,26 @@ impl SessionManager {
         Ok(self.sessions.get_mut(&peer).unwrap())
     }
 
-    /// Temporary: derive key from peer ID
-    /// TODO: Replace with handshake
+    /// Temporary: derive key from both peer IDs (symmetric)
+    /// TODO: Replace with proper handshake key exchange
     fn derive_session_key(&self, peer: &PeerId) -> [u8; 32] {
         use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
         hasher.update(b"umbra-session-v1");
-        hasher.update(peer.to_bytes());
+        
+        // Create symmetric key by ordering peer IDs
+        let peer1 = self.local_peer_id.to_bytes();
+        let peer2 = peer.to_bytes();
+        
+        // Sort to ensure same order on both sides
+        if peer1.as_slice() < peer2.as_slice() {
+            hasher.update(&peer1);
+            hasher.update(&peer2);
+        } else {
+            hasher.update(&peer2);
+            hasher.update(&peer1);
+        }
+        
         hasher.finalize().into()
     }
 
@@ -211,7 +226,7 @@ mod tests {
 
     #[test]
     fn test_session_creation() {
-        let mut mgr = SessionManager::new().unwrap();
+        let mut mgr = SessionManager::new(PeerId::random()).unwrap();
         let peer = PeerId::random();
         
         let session = mgr.get_session(peer).unwrap();
@@ -220,7 +235,7 @@ mod tests {
 
     #[test]
     fn test_session_reuse() {
-        let mut mgr = SessionManager::new().unwrap();
+        let mut mgr = SessionManager::new(PeerId::random()).unwrap();
         let peer = PeerId::random();
         
         let key1 = *mgr.get_session(peer).unwrap().key();
@@ -231,7 +246,7 @@ mod tests {
 
     #[test]
     fn test_different_peers_different_keys() {
-        let mut mgr = SessionManager::new().unwrap();
+        let mut mgr = SessionManager::new(PeerId::random()).unwrap();
         let peer1 = PeerId::random();
         let peer2 = PeerId::random();
         
@@ -243,7 +258,7 @@ mod tests {
 
     #[test]
     fn test_rotation_on_count() {
-        let mut mgr = SessionManager::new().unwrap();
+        let mut mgr = SessionManager::new(PeerId::random()).unwrap();
         let peer = PeerId::random();
         
         let session = mgr.get_session(peer).unwrap();
@@ -254,7 +269,7 @@ mod tests {
 
     #[test]
     fn test_cleanup() {
-        let mut mgr = SessionManager::new().unwrap();
+        let mut mgr = SessionManager::new(PeerId::random()).unwrap();
         let peer = PeerId::random();
         
         let session = mgr.get_session(peer).unwrap();
@@ -266,7 +281,7 @@ mod tests {
 
     #[test]
     fn test_identity_management() {
-        let mgr = SessionManager::new().unwrap();
+        let mgr = SessionManager::new(PeerId::random()).unwrap();
         let pk = mgr.public_key();
         
         // Should be able to get public key
@@ -275,7 +290,7 @@ mod tests {
 
     #[test]
     fn test_peer_registration() {
-        let mut mgr = SessionManager::new().unwrap();
+        let mut mgr = SessionManager::new(PeerId::random()).unwrap();
         let peer = PeerId::random();
         let peer_key = SigningKey::from_bytes(&rand::random()).verifying_key();
         
@@ -285,7 +300,7 @@ mod tests {
 
     #[test]
     fn test_session_increment() {
-        let mut mgr = SessionManager::new().unwrap();
+        let mut mgr = SessionManager::new(PeerId::random()).unwrap();
         let peer = PeerId::random();
         
         let session = mgr.get_session(peer).unwrap();
@@ -300,7 +315,7 @@ mod tests {
 
     #[test]
     fn test_session_age() {
-        let mut mgr = SessionManager::new().unwrap();
+        let mut mgr = SessionManager::new(PeerId::random()).unwrap();
         let peer = PeerId::random();
         
         let session = mgr.get_session(peer).unwrap();
@@ -312,7 +327,7 @@ mod tests {
 
     #[test]
     fn test_max_sessions_eviction() {
-        let mut mgr = SessionManager::new().unwrap();
+        let mut mgr = SessionManager::new(PeerId::random()).unwrap();
         
         // Create MAX_SESSIONS + 1 sessions
         for _ in 0..=MAX_SESSIONS {
@@ -326,7 +341,7 @@ mod tests {
 
     #[test]
     fn test_session_expiry_and_cleanup() {
-        let mut mgr = SessionManager::new().unwrap();
+        let mut mgr = SessionManager::new(PeerId::random()).unwrap();
         let peer = PeerId::random();
         
         // Get initial session
@@ -344,7 +359,7 @@ mod tests {
 
     #[test]
     fn test_handshake_initiate() {
-        let mgr = SessionManager::new().unwrap();
+        let mgr = SessionManager::new(PeerId::random()).unwrap();
         let peer = PeerId::random();
         
         let init = mgr.initiate_handshake(peer).unwrap();
@@ -355,7 +370,7 @@ mod tests {
 
     #[test]
     fn test_handshake_respond_without_peer_key() {
-        let mut mgr = SessionManager::new().unwrap();
+        let mut mgr = SessionManager::new(PeerId::random()).unwrap();
         let peer = PeerId::random();
         
         let init = HandshakeInit {
@@ -372,7 +387,7 @@ mod tests {
 
     #[test]
     fn test_multiple_peer_sessions() {
-        let mut mgr = SessionManager::new().unwrap();
+        let mut mgr = SessionManager::new(PeerId::random()).unwrap();
         let peers: Vec<_> = (0..10).map(|_| PeerId::random()).collect();
         
         // Create sessions for all peers
@@ -396,7 +411,7 @@ mod tests {
 
     #[test]
     fn test_session_key_deterministic() {
-        let mut mgr = SessionManager::new().unwrap();
+        let mut mgr = SessionManager::new(PeerId::random()).unwrap();
         let peer = PeerId::random();
         
         // Same peer should get same key (until rotation)

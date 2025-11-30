@@ -20,6 +20,12 @@ pub enum NetError {
     #[error("Invalid message: {0}")]
     InvalidMessage(String),
     
+    #[error("Crypto error: {0}")]
+    Crypto(String),
+    
+    #[error("Protocol error: {0}")]
+    Protocol(String),
+    
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 }

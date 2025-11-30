@@ -62,12 +62,15 @@ impl ChatSession {
     }
 
     fn handle_incoming_message(&mut self, peer_id: PeerId, data: Vec<u8>) {
-        // Use quantum-safe handshake session key
-        let session_key = match self.node.get_session_key(&peer_id) {
-            Some(key) => key,
-            None => {
-                // No handshake yet - decrypt with topic-based fallback for now
-                // In production, we'd initiate handshake here
+        // Try to decrypt with new message exchange protocol
+        match self.node.decrypt_message(peer_id, &data) {
+            Ok((username, content)) => {
+                let peer_short = peer_id.to_string().chars().take(8).collect::<String>();
+                UI::print_incoming_message(&peer_short, &content, &self.username);
+                return;
+            }
+            Err(_) => {
+                // Fall back to legacy topic-based encryption for backwards compatibility
                 let topic_key = Self::derive_topic_key(&self.topic);
                 let crypto = ChatCrypto::from_key(&topic_key);
                 match crypto.decrypt(&data) {
@@ -81,21 +84,6 @@ impl ChatSession {
                         UI::print_decryption_error();
                     }
                 }
-                return;
-            }
-        };
-        
-        // Decrypt with quantum-safe session key
-        let crypto = ChatCrypto::from_key(session_key);
-        match crypto.decrypt(&data) {
-            Ok(plaintext) => {
-                if let Ok(msg) = String::from_utf8(plaintext) {
-                    let peer_short = peer_id.to_string().chars().take(8).collect::<String>();
-                    UI::print_incoming_message(&peer_short, &msg, &self.username);
-                }
-            }
-            Err(_) => {
-                UI::print_decryption_error();
             }
         }
     }
@@ -144,15 +132,37 @@ impl ChatSession {
         }
 
         // Send encrypted message
-        let formatted_msg = format!("{}: {}", self.username, message);
+        // For group chat, we use topic-based encryption (shared key)
+        // For 1-1 chat, we'd use peer-specific encryption with send_encrypted_message
         
-        // Use topic-based key for broadcast (all peers get same message)
-        // Individual peer encryption would require sending to each peer separately
-        let topic_key = Self::derive_topic_key(&self.topic);
-        let crypto = ChatCrypto::from_key(&topic_key);
-        let encrypted = crypto.encrypt(formatted_msg.as_bytes());
+        // Check if we have any peers
+        let peers = self.node.connected_peers();
+        if peers.is_empty() {
+            UI::print_error("No peers connected yet. Message not sent.");
+            UI::print_prompt(&self.username);
+            return Ok(true);
+        }
 
-        match self.node.publish(&self.topic, encrypted) {
+        // Try new encrypted message format first
+        // For group chat, we send to all peers with the first peer's session
+        // (This is temporary - proper group keys come in v0.5)
+        let send_result = if let Some(&first_peer) = peers.first() {
+            self.node.send_encrypted_message(
+                &self.topic,
+                first_peer,
+                &self.username,
+                message,
+            )
+        } else {
+            // Fallback to legacy topic-based encryption
+            let formatted_msg = format!("{}: {}", self.username, message);
+            let topic_key = Self::derive_topic_key(&self.topic);
+            let crypto = ChatCrypto::from_key(&topic_key);
+            let encrypted = crypto.encrypt(formatted_msg.as_bytes());
+            self.node.publish(&self.topic, encrypted)
+        };
+
+        match send_result {
             Ok(_) => {
                 UI::print_message_sent();
             }

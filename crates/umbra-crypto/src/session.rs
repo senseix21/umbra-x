@@ -41,6 +41,10 @@ impl SessionKey {
         self.msg_count += 1;
     }
 
+    pub fn msg_count(&self) -> u64 {
+        self.msg_count
+    }
+
     pub fn should_rotate(&self) -> bool {
         self.msg_count >= 1000 || self.age() >= SESSION_TIMEOUT
     }

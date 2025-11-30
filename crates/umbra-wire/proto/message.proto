@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package umbra.message;
+
+// Encrypted chat message
+message EncryptedMessage {
+  bytes sender = 1;        // PeerId bytes
+  bytes nonce = 2;         // 12 bytes for ChaCha20Poly1305
+  bytes ciphertext = 3;    // Encrypted payload
+  uint64 timestamp = 4;    // Unix timestamp
+  bytes signature = 5;     // 64 bytes Ed25519 (optional, for authenticity)
+}
+
+// Plaintext message (before encryption)
+message ChatMessage {
+  string username = 1;
+  string content = 2;
+  uint64 timestamp = 3;
+}
+
+// Message wrapper for different types
+message Message {
+  oneof payload {
+    EncryptedMessage encrypted = 1;
+    ChatMessage plaintext = 2;  // For testing only
+  }
+}

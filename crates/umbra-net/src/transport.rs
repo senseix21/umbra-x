@@ -65,6 +65,7 @@ pub struct P2PNode {
     local_peer_id: PeerId,
     message_rx: Option<tokio::sync::mpsc::UnboundedReceiver<(PeerId, Vec<u8>)>>,
     message_tx: tokio::sync::mpsc::UnboundedSender<(PeerId, Vec<u8>)>,
+    message_exchange: crate::message::MessageExchange,
 }
 
 impl P2PNode {
@@ -130,11 +131,15 @@ impl P2PNode {
         
         let (message_tx, message_rx) = tokio::sync::mpsc::unbounded_channel();
         
+        let message_exchange = crate::message::MessageExchange::new()
+            .map_err(|e| crate::error::NetError::Transport(format!("MessageExchange init: {}", e)))?;
+        
         Ok(Self {
             swarm,
             local_peer_id,
             message_rx: Some(message_rx),
             message_tx,
+            message_exchange,
         })
     }
     
@@ -166,6 +171,28 @@ impl P2PNode {
         self.swarm.behaviour_mut().gossipsub.publish(topic, data)
             .map_err(|e| crate::error::NetError::Transport(format!("Publish failed: {}", e)))?;
         Ok(())
+    }
+
+    /// Send encrypted message to a topic
+    pub fn send_encrypted_message(
+        &mut self,
+        topic: &str,
+        peer: PeerId,
+        username: &str,
+        content: &str,
+    ) -> crate::error::Result<()> {
+        // Encrypt message for peer
+        let encrypted_data = self.message_exchange.encrypt_message(peer, username, content)?;
+        
+        // Publish to gossipsub
+        self.publish(topic, encrypted_data)?;
+        
+        Ok(())
+    }
+
+    /// Decrypt received message
+    pub fn decrypt_message(&mut self, peer: PeerId, data: &[u8]) -> crate::error::Result<(String, String)> {
+        self.message_exchange.decrypt_message(peer, data)
     }
     
     /// Add a peer to the routing table

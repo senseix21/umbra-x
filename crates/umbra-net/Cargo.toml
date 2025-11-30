@@ -23,6 +23,7 @@ rand = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }
+prost = { workspace = true }
 
 # Internal
 umbra-wire = { path = "../umbra-wire" }

@@ -258,8 +258,11 @@ impl P2PNode {
                     UmbraEvent::Handshake(event) => {
                         use crate::handshake::HandshakeEvent;
                         match event {
-                            HandshakeEvent::Completed { peer_id, session_key: _ } => {
+                            HandshakeEvent::Completed { peer_id, session_key: _, verify_key } => {
                                 info!("✅ Quantum-safe handshake completed with {}", peer_id);
+                                // Register peer's verify key for message signature verification
+                                self.message_exchange.session_manager_mut().register_peer(peer_id, verify_key);
+                                info!("🔑 Registered verify key for {}", peer_id);
                             }
                             HandshakeEvent::Failed { peer_id, error } => {
                                 warn!("❌ Handshake with {} failed: {}", peer_id, error);

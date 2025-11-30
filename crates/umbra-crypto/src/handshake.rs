@@ -17,6 +17,7 @@ pub struct HandshakeInit {
     pub pq_pk: Vec<u8>,
     #[serde(with = "serde_arrays")]
     pub signature: [u8; 64],
+    pub verify_key: [u8; 32], // Ed25519 public key for message signatures
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -27,6 +28,7 @@ pub struct HandshakeResp {
     pub pq_ct: Vec<u8>,
     #[serde(with = "serde_arrays")]
     pub signature: [u8; 64],
+    pub verify_key: [u8; 32], // Ed25519 public key for message signatures
 }
 
 mod serde_arrays {
@@ -63,6 +65,7 @@ impl Handshake {
     pub fn initiate(&self, peer_id: PeerId) -> Result<HandshakeInit> {
         let peer_id_bytes = peer_id.to_bytes();
         let x25519_pk = *self.kem.classical_public_key().as_bytes();
+        let verify_key = self.identity.verifying_key().to_bytes();
         
         let mut msg = Vec::new();
         msg.extend_from_slice(&peer_id_bytes);
@@ -83,6 +86,7 @@ impl Handshake {
             #[cfg(feature = "pq")]
             pq_pk,
             signature: signature.to_bytes(),
+            verify_key,
         })
     }
 
@@ -133,6 +137,7 @@ impl Handshake {
         resp_msg.extend_from_slice(&pq_ct);
         
         let signature = self.identity.sign(&resp_msg);
+        let verify_key = self.identity.verifying_key().to_bytes();
         
         let resp = HandshakeResp {
             peer_id: peer_id_bytes,
@@ -140,6 +145,7 @@ impl Handshake {
             #[cfg(feature = "pq")]
             pq_ct,
             signature: signature.to_bytes(),
+            verify_key,
         };
         
         Ok((resp, session_key))

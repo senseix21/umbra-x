@@ -16,6 +16,7 @@ impl From<&CryptoHandshakeInit> for HandshakeInit {
             #[cfg(not(feature = "pq"))]
             pq_pk: vec![],
             signature: init.signature.to_vec(),
+            verify_key: init.verify_key.to_vec(),
         }
     }
 }
@@ -30,6 +31,9 @@ impl TryFrom<&HandshakeInit> for CryptoHandshakeInit {
         if proto.signature.len() != 64 {
             return Err("Invalid signature length");
         }
+        if proto.verify_key.len() != 32 {
+            return Err("Invalid verify_key length");
+        }
         
         let x25519_pk: [u8; 32] = proto.x25519_pk.as_slice()
             .try_into()
@@ -39,12 +43,17 @@ impl TryFrom<&HandshakeInit> for CryptoHandshakeInit {
             .try_into()
             .map_err(|_| "signature conversion failed")?;
         
+        let verify_key: [u8; 32] = proto.verify_key.as_slice()
+            .try_into()
+            .map_err(|_| "verify_key conversion failed")?;
+        
         Ok(CryptoHandshakeInit {
             peer_id: proto.peer_id.clone(),
             x25519_pk,
             #[cfg(feature = "pq")]
             pq_pk: proto.pq_pk.clone(),
             signature,
+            verify_key,
         })
     }
 }
@@ -59,6 +68,7 @@ impl From<&CryptoHandshakeResp> for HandshakeResp {
             #[cfg(not(feature = "pq"))]
             pq_ct: vec![],
             signature: resp.signature.to_vec(),
+            verify_key: resp.verify_key.to_vec(),
         }
     }
 }
@@ -73,6 +83,9 @@ impl TryFrom<&HandshakeResp> for CryptoHandshakeResp {
         if proto.signature.len() != 64 {
             return Err("Invalid signature length");
         }
+        if proto.verify_key.len() != 32 {
+            return Err("Invalid verify_key length");
+        }
         
         let x25519_pk: [u8; 32] = proto.x25519_pk.as_slice()
             .try_into()
@@ -82,12 +95,17 @@ impl TryFrom<&HandshakeResp> for CryptoHandshakeResp {
             .try_into()
             .map_err(|_| "signature conversion failed")?;
         
+        let verify_key: [u8; 32] = proto.verify_key.as_slice()
+            .try_into()
+            .map_err(|_| "verify_key conversion failed")?;
+        
         Ok(CryptoHandshakeResp {
             peer_id: proto.peer_id.clone(),
             x25519_pk,
             #[cfg(feature = "pq")]
             pq_ct: proto.pq_ct.clone(),
             signature,
+            verify_key,
         })
     }
 }

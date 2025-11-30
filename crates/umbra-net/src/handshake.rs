@@ -20,6 +20,7 @@ pub enum HandshakeEvent {
     Completed {
         peer_id: PeerId,
         session_key: [u8; 32],
+        verify_key: VerifyingKey,
     },
     /// Handshake failed
     Failed {
@@ -79,23 +80,32 @@ impl HandshakeBehaviour {
     // Helper methods for future use (Week 2)
     #[allow(dead_code)]
     fn handle_init(&mut self, peer_id: PeerId, init: &WireHandshakeInit) -> Result<WireHandshakeResp, String> {
-        let peer_key = self.peer_keys.get(&peer_id)
-            .ok_or_else(|| format!("No verify key for peer {}", peer_id))?;
-
         // Convert from wire format
         let crypto_init = CryptoHandshakeInit::try_from(init)
             .map_err(|e| format!("Invalid init message: {}", e))?;
+
+        // Extract and register peer's verify key
+        let peer_key = ed25519_dalek::VerifyingKey::from_bytes(&crypto_init.verify_key)
+            .map_err(|e| format!("Invalid verify key: {}", e))?;
+        self.peer_keys.insert(peer_id, peer_key);
 
         // Create handshake and respond
         let hs = Handshake::new(self.identity.clone())
             .map_err(|e| format!("Failed to create handshake: {:?}", e))?;
 
-        let (crypto_resp, session_key) = hs.respond(peer_id, &crypto_init, peer_key)
+        let (crypto_resp, session_key) = hs.respond(peer_id, &crypto_init, &peer_key)
             .map_err(|e| format!("Failed to respond to handshake: {:?}", e))?;
 
         // Store session key
         self.session_keys.insert(peer_id, session_key);
         info!("Handshake completed with {} (responder)", peer_id);
+
+        // Emit event with verify key
+        self.pending_events.push_back(HandshakeEvent::Completed {
+            peer_id,
+            session_key,
+            verify_key: peer_key,
+        });
 
         // Convert to wire format
         Ok(WireHandshakeResp::from(&crypto_resp))
@@ -103,23 +113,32 @@ impl HandshakeBehaviour {
 
     #[allow(dead_code)]
     fn handle_resp(&mut self, peer_id: PeerId, resp: &WireHandshakeResp) -> Result<(), String> {
-        let peer_key = self.peer_keys.get(&peer_id)
-            .ok_or_else(|| format!("No verify key for peer {}", peer_id))?;
-
         // Convert from wire format
         let crypto_resp = CryptoHandshakeResp::try_from(resp)
             .map_err(|e| format!("Invalid resp message: {}", e))?;
+
+        // Extract and register peer's verify key
+        let peer_key = ed25519_dalek::VerifyingKey::from_bytes(&crypto_resp.verify_key)
+            .map_err(|e| format!("Invalid verify key: {}", e))?;
+        self.peer_keys.insert(peer_id, peer_key);
 
         // Complete handshake
         let hs = Handshake::new(self.identity.clone())
             .map_err(|e| format!("Failed to create handshake: {:?}", e))?;
 
-        let session_key = hs.complete(&crypto_resp, peer_key)
+        let session_key = hs.complete(&crypto_resp, &peer_key)
             .map_err(|e| format!("Failed to complete handshake: {:?}", e))?;
 
         // Store session key
         self.session_keys.insert(peer_id, session_key);
         info!("Handshake completed with {} (initiator)", peer_id);
+
+        // Emit event with verify key
+        self.pending_events.push_back(HandshakeEvent::Completed {
+            peer_id,
+            session_key,
+            verify_key: peer_key,
+        });
 
         Ok(())
     }

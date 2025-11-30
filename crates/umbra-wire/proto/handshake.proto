@@ -8,6 +8,7 @@ message HandshakeInit {
   bytes x25519_pk = 2;    // 32 bytes
   bytes pq_pk = 3;        // Optional: ML-KEM-768 public key (~1184 bytes)
   bytes signature = 4;    // 64 bytes Ed25519
+  bytes verify_key = 5;   // 32 bytes Ed25519 public key (for message signatures)
 }
 
 // Handshake response message
@@ -16,6 +17,7 @@ message HandshakeResp {
   bytes x25519_pk = 2;    // 32 bytes
   bytes pq_ct = 3;        // Optional: ML-KEM-768 ciphertext (~1088 bytes)
   bytes signature = 4;    // 64 bytes Ed25519
+  bytes verify_key = 5;   // 32 bytes Ed25519 public key (for message signatures)
 }
 
 // Complete handshake message (wrapper)

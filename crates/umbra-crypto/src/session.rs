@@ -362,6 +362,7 @@ mod tests {
             peer_id: peer.to_bytes(),
             x25519_pk: [0u8; 32],
             signature: [0u8; 64],
+            verify_key: [0u8; 32],
         };
         
         // Should fail - peer not registered

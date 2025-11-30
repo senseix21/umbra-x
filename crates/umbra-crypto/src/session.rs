@@ -85,6 +85,31 @@ impl SessionManager {
         self.peer_keys.insert(peer, verify_key);
     }
 
+    /// Get peer's public key for verification
+    pub fn get_peer_key(&self, peer: &PeerId) -> Option<&VerifyingKey> {
+        self.peer_keys.get(peer)
+    }
+
+    /// Sign data with our identity key
+    pub fn sign(&self, data: &[u8]) -> ed25519_dalek::Signature {
+        use ed25519_dalek::Signer;
+        self.identity.sign(data)
+    }
+
+    /// Verify signature from a peer
+    pub fn verify(&self, peer: &PeerId, data: &[u8], signature: &ed25519_dalek::Signature) -> Result<()> {
+        use ed25519_dalek::Verifier;
+        let peer_key = self.peer_keys.get(peer)
+            .ok_or(crate::error::CryptoError::KeyDerivation(
+                "Peer key not registered".to_string()
+            ))?;
+        
+        peer_key.verify(data, signature)
+            .map_err(|e| crate::error::CryptoError::InvalidSignature(e.to_string()))?;
+        
+        Ok(())
+    }
+
     /// Initiate handshake with peer
     pub fn initiate_handshake(&self, peer: PeerId) -> Result<HandshakeInit> {
         let hs = Handshake::new(self.identity.clone())?;

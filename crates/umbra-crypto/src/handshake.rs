@@ -102,7 +102,7 @@ impl Handshake {
         
         let sig = Signature::from_bytes(&init.signature);
         peer_verify_key.verify(&msg, &sig)
-            .map_err(|_| crate::error::CryptoError::InvalidSignature)?;
+            .map_err(|e| crate::error::CryptoError::InvalidSignature(e.to_string()))?;
         
         // Hybrid KEM encapsulation
         let peer_x25519_pk = PublicKey::from(init.x25519_pk);
@@ -160,7 +160,7 @@ impl Handshake {
         
         let sig = Signature::from_bytes(&resp.signature);
         peer_verify_key.verify(&msg, &sig)
-            .map_err(|_| crate::error::CryptoError::InvalidSignature)?;
+            .map_err(|e| crate::error::CryptoError::InvalidSignature(e.to_string()))?;
         
         // Hybrid KEM decapsulation
         let peer_x25519_pk = PublicKey::from(resp.x25519_pk);

@@ -9,6 +9,7 @@ use tracing::{debug, warn};
 use umbra_crypto::session::{SessionKey, SessionManager};
 use umbra_crypto::aead::Envelope;
 use umbra_wire::message::{ChatMessage, EncryptedMessage};
+use ed25519_dalek;
 
 /// Manages message encryption/decryption for all peers
 pub struct MessageExchange {
@@ -39,10 +40,6 @@ impl MessageExchange {
         username: &str,
         content: &str,
     ) -> Result<Vec<u8>> {
-        // Get or create session
-        let session = self.session_mgr.get_session(peer)
-            .map_err(|e| NetError::Crypto(format!("Get session: {}", e)))?;
-
         // Create plaintext message
         let chat_msg = ChatMessage {
             username: username.to_string(),
@@ -56,8 +53,18 @@ impl MessageExchange {
         // Serialize to protobuf
         let plaintext = chat_msg.encode_to_vec();
 
+        // Sign the plaintext message (username || content || timestamp)
+        let signature = self.session_mgr.sign(&plaintext);
+
+        // Get or create session and copy key
+        let session_key = {
+            let session = self.session_mgr.get_session(peer)
+                .map_err(|e| NetError::Crypto(format!("Get session: {}", e)))?;
+            *session.key()
+        };
+
         // Encrypt with session key
-        let envelope = Envelope::new(session.key())
+        let envelope = Envelope::new(&session_key)
             .map_err(|e| NetError::Crypto(format!("Envelope init: {}", e)))?;
         
         let encrypted_data = envelope.encrypt(&plaintext)
@@ -72,11 +79,13 @@ impl MessageExchange {
             nonce: nonce.to_vec(),
             ciphertext: ciphertext.to_vec(),
             timestamp: chat_msg.timestamp,
-            signature: vec![], // TODO: Add signature in v0.5
+            signature: signature.to_bytes().to_vec(),
         };
 
         // Increment message counter
-        session.increment();
+        self.session_mgr.get_session(peer)
+            .map_err(|e| NetError::Crypto(format!("Get session: {}", e)))?
+            .increment();
 
         // Serialize to wire format
         Ok(enc_msg.encode_to_vec())
@@ -108,11 +117,27 @@ impl MessageExchange {
         let plaintext = envelope.decrypt(&encrypted_data)
             .map_err(|e| NetError::Crypto(format!("Decrypt: {}", e)))?;
 
+        // Verify signature if present
+        if !enc_msg.signature.is_empty() {
+            // Parse signature
+            if enc_msg.signature.len() != 64 {
+                return Err(NetError::Crypto("Invalid signature length".to_string()));
+            }
+            
+            let mut sig_bytes = [0u8; 64];
+            sig_bytes.copy_from_slice(&enc_msg.signature);
+            let signature = ed25519_dalek::Signature::from_bytes(&sig_bytes);
+            
+            // Verify against plaintext
+            self.session_mgr.verify(&peer, &plaintext, &signature)
+                .map_err(|e| NetError::Crypto(format!("Signature verification failed: {}", e)))?;
+        }
+
         // Deserialize chat message
         let chat_msg = ChatMessage::decode(&plaintext[..])
             .map_err(|e| NetError::Protocol(format!("Decode ChatMessage: {}", e)))?;
 
-        debug!("Decrypted message from {}: {}", chat_msg.username, chat_msg.content);
+        debug!("Decrypted and verified message from {}: {}", chat_msg.username, chat_msg.content);
 
         Ok((chat_msg.username, chat_msg.content))
     }
@@ -138,6 +163,10 @@ mod tests {
         let mut bob = MessageExchange::new().unwrap();
         
         let peer_id = PeerId::random();
+
+        // Register keys for signature verification
+        let alice_pubkey = alice.session_manager().public_key();
+        bob.session_manager_mut().register_peer(peer_id, alice_pubkey);
 
         // Alice encrypts
         let encrypted = alice.encrypt_message(

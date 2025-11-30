@@ -16,9 +16,16 @@ pub struct ChatSession {
 
 impl ChatSession {
     pub fn new(node: P2PNode, username: String, topic: String) -> Self {
+        let session_mgr = SessionManager::new().expect("Failed to create session manager");
+        
+        // Print our identity key (for peer verification in future)
+        let pk = session_mgr.public_key();
+        let pk_hex = hex::encode(pk.as_bytes());
+        println!("Your identity: {}...", &pk_hex[..16]);
+        
         Self {
             node,
-            session_mgr: SessionManager::new().expect("Failed to create session manager"),
+            session_mgr,
             username,
             topic,
         }

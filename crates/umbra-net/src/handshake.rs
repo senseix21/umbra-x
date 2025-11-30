@@ -5,13 +5,14 @@ use umbra_crypto::handshake::Handshake;
 use umbra_wire::handshake::{
     HandshakeInit as WireHandshakeInit,
     HandshakeResp as WireHandshakeResp,
+    HandshakeMessage, handshake_message,
 };
 use umbra_crypto::handshake::{
     HandshakeInit as CryptoHandshakeInit,
     HandshakeResp as CryptoHandshakeResp,
 };
 use ed25519_dalek::{SigningKey, VerifyingKey};
-use tracing::{debug, info};
+use tracing::{debug, info, error};
 
 /// Events emitted by the handshake protocol
 #[derive(Debug)]
@@ -29,12 +30,21 @@ pub enum HandshakeEvent {
     },
 }
 
+/// Messages to send via gossipsub
+#[derive(Debug)]
+pub enum HandshakeOutbound {
+    SendInit { peer_id: PeerId, data: Vec<u8> },
+    SendResp { peer_id: PeerId, data: Vec<u8> },
+}
+
 /// Handshake protocol behaviour
 pub struct HandshakeBehaviour {
     identity: SigningKey,
     peer_keys: HashMap<PeerId, VerifyingKey>,
     pending_events: VecDeque<HandshakeEvent>,
+    pending_outbound: VecDeque<HandshakeOutbound>,
     session_keys: HashMap<PeerId, [u8; 32]>,
+    pending_inits: HashMap<PeerId, CryptoHandshakeInit>,
 }
 
 impl HandshakeBehaviour {
@@ -43,7 +53,9 @@ impl HandshakeBehaviour {
             identity,
             peer_keys: HashMap::new(),
             pending_events: VecDeque::new(),
+            pending_outbound: VecDeque::new(),
             session_keys: HashMap::new(),
+            pending_inits: HashMap::new(),
         }
     }
 
@@ -69,17 +81,57 @@ impl HandshakeBehaviour {
         let hs = Handshake::new(self.identity.clone())
             .map_err(|e| format!("Failed to create handshake: {:?}", e))?;
         
-        let _init = hs.initiate(peer_id)
+        let crypto_init = hs.initiate(peer_id)
             .map_err(|e| format!("Failed to initiate handshake: {:?}", e))?;
         
-        // TODO: Send via connection handler in Week 2
+        // Store for completion later
+        self.pending_inits.insert(peer_id, crypto_init.clone());
+        
+        // Convert to wire format  
+        let wire_init = WireHandshakeInit::from(&crypto_init);
+        let msg = HandshakeMessage {
+            message: Some(handshake_message::Message::Init(wire_init)),
+        };
+        
+        // Queue for sending via gossipsub
+        self.pending_outbound.push_back(HandshakeOutbound::SendInit {
+            peer_id,
+            data: msg.encode_to_vec(),
+        });
         
         Ok(())
     }
 
-    // Helper methods for future use (Week 2)
-    #[allow(dead_code)]
-    fn handle_init(&mut self, peer_id: PeerId, init: &WireHandshakeInit) -> Result<WireHandshakeResp, String> {
+    /// Handle received handshake message
+    pub fn handle_message(&mut self, peer_id: PeerId, data: &[u8]) -> Result<(), String> {
+        let msg = HandshakeMessage::decode_from_bytes(data)
+            .map_err(|e| format!("Failed to decode handshake message: {}", e))?;
+        
+        match msg.message {
+            Some(handshake_message::Message::Init(init)) => {
+                let resp_data = self.handle_init(peer_id, &init)?;
+                self.pending_outbound.push_back(HandshakeOutbound::SendResp {
+                    peer_id,
+                    data: resp_data,
+                });
+            }
+            Some(handshake_message::Message::Resp(resp)) => {
+                self.handle_resp(peer_id, &resp)?;
+            }
+            None => {
+                return Err("Empty handshake message".to_string());
+            }
+        }
+        
+        Ok(())
+    }
+
+    /// Get next outbound message to send
+    pub fn poll_outbound(&mut self) -> Option<HandshakeOutbound> {
+        self.pending_outbound.pop_front()
+    }
+
+    fn handle_init(&mut self, peer_id: PeerId, init: &WireHandshakeInit) -> Result<Vec<u8>, String> {
         // Convert from wire format
         let crypto_init = CryptoHandshakeInit::try_from(init)
             .map_err(|e| format!("Invalid init message: {}", e))?;
@@ -107,11 +159,15 @@ impl HandshakeBehaviour {
             verify_key: peer_key,
         });
 
-        // Convert to wire format
-        Ok(WireHandshakeResp::from(&crypto_resp))
+        // Convert to wire format and return
+        let wire_resp = WireHandshakeResp::from(&crypto_resp);
+        let msg = HandshakeMessage {
+            message: Some(handshake_message::Message::Resp(wire_resp)),
+        };
+        
+        Ok(msg.encode_to_vec())
     }
 
-    #[allow(dead_code)]
     fn handle_resp(&mut self, peer_id: PeerId, resp: &WireHandshakeResp) -> Result<(), String> {
         // Convert from wire format
         let crypto_resp = CryptoHandshakeResp::try_from(resp)
@@ -131,6 +187,7 @@ impl HandshakeBehaviour {
 
         // Store session key
         self.session_keys.insert(peer_id, session_key);
+        self.pending_inits.remove(&peer_id);
         info!("Handshake completed with {} (initiator)", peer_id);
 
         // Emit event with verify key
@@ -144,7 +201,7 @@ impl HandshakeBehaviour {
     }
 }
 
-// Simplified NetworkBehaviour implementation (stub for now)
+// NetworkBehaviour implementation (dummy - we use gossipsub for transport)
 impl NetworkBehaviour for HandshakeBehaviour {
     type ConnectionHandler = libp2p::swarm::dummy::ConnectionHandler;
     type ToSwarm = HandshakeEvent;

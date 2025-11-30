@@ -29,7 +29,7 @@ tokio-util = "0.7"
 futures = "0.3"
 
 # Networking
-libp2p = { version = "0.53", features = ["tokio", "tcp", "quic", "dns", "kad", "identify", "ping", "gossipsub", "noise", "yamux", "macros"] }
+libp2p = { version = "0.53", features = ["tokio", "tcp", "quic", "dns", "kad", "identify", "ping", "gossipsub", "noise", "yamux", "macros", "request-response"] }
 quinn = "0.11"
 
 # Crypto

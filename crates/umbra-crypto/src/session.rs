@@ -175,6 +175,16 @@ impl SessionManager {
         Ok(self.sessions.get_mut(&peer).unwrap())
     }
 
+    /// Set session key from handshake (replaces symmetric derivation)
+    pub fn set_session_key(&mut self, peer: PeerId, key: [u8; 32]) {
+        self.sessions.insert(peer, SessionKey::new(key));
+        
+        // Enforce memory limit
+        if self.sessions.len() > MAX_SESSIONS {
+            self.evict_oldest();
+        }
+    }
+
     /// Temporary: derive key from both peer IDs (symmetric)
     /// TODO: Replace with proper handshake key exchange
     fn derive_session_key(&self, peer: &PeerId) -> [u8; 32] {

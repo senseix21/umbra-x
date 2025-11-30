@@ -173,6 +173,7 @@ mod tests {
             x25519_pk: vec![0u8; 16], // Wrong length!
             pq_pk: vec![],
             signature: vec![0u8; 64],
+            verify_key: vec![0u8; 32],
         };
         
         let result = CryptoHandshakeInit::try_from(&proto_init);
@@ -186,6 +187,7 @@ mod tests {
             x25519_pk: vec![0u8; 32],
             pq_pk: vec![],
             signature: vec![0u8; 32], // Wrong length!
+            verify_key: vec![0u8; 32],
         };
         
         let result = CryptoHandshakeInit::try_from(&proto_init);
@@ -199,6 +201,7 @@ mod tests {
             x25519_pk: vec![0u8; 32],
             pq_pk: vec![],
             signature: vec![0u8; 64],
+            verify_key: vec![0u8; 32],
         };
         
         // Should succeed (peer_id can be empty Vec, though invalid)

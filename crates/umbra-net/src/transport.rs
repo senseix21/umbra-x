@@ -221,6 +221,22 @@ impl P2PNode {
     pub async fn poll_once(&mut self) -> crate::error::Result<()> {
         use futures::StreamExt;
         
+        // Check for outbound handshake messages
+        while let Some(outbound) = self.swarm.behaviour_mut().handshake.poll_outbound() {
+            use crate::handshake::HandshakeOutbound;
+            match outbound {
+                HandshakeOutbound::SendInit { peer_id, data } | 
+                HandshakeOutbound::SendResp { peer_id, data } => {
+                    debug!("Sending handshake message to {} ({} bytes)", peer_id, data.len());
+                    // Get first topic (if any)
+                    let topic_opt = self.swarm.behaviour().gossipsub.topics().next().cloned();
+                    if let Some(topic) = topic_opt {
+                        let _ = self.swarm.behaviour_mut().gossipsub.publish(topic, data);
+                    }
+                }
+            }
+        }
+        
         match self.swarm.select_next_some().await {
             SwarmEvent::NewListenAddr { address, .. } => {
                 debug!("Listening on {:?}", address);
@@ -247,22 +263,36 @@ impl P2PNode {
                         message,
                         ..
                     }) => {
-                        info!(
-                            "Received message from {}: {} bytes",
-                            propagation_source,
-                            message.data.len()
-                        );
-                        // Forward message to application layer
-                        let _ = self.message_tx.send((propagation_source, message.data));
+                        // Try to parse as handshake message first
+                        if let Ok(_hs_msg) = umbra_wire::handshake::HandshakeMessage::decode_from_bytes(&message.data) {
+                            debug!("Received handshake message from {}", propagation_source);
+                            if let Err(e) = self.swarm.behaviour_mut().handshake.handle_message(propagation_source, &message.data) {
+                                warn!("Handshake message processing failed: {}", e);
+                            }
+                        } else {
+                            // Regular chat message
+                            info!(
+                                "Received message from {}: {} bytes",
+                                propagation_source,
+                                message.data.len()
+                            );
+                            // Forward message to application layer
+                            let _ = self.message_tx.send((propagation_source, message.data));
+                        }
                     }
                     UmbraEvent::Handshake(event) => {
                         use crate::handshake::HandshakeEvent;
                         match event {
-                            HandshakeEvent::Completed { peer_id, session_key: _, verify_key } => {
+                            HandshakeEvent::Completed { peer_id, session_key, verify_key } => {
                                 info!("✅ Quantum-safe handshake completed with {}", peer_id);
+                                
                                 // Register peer's verify key for message signature verification
                                 self.message_exchange.session_manager_mut().register_peer(peer_id, verify_key);
-                                info!("🔑 Registered verify key for {}", peer_id);
+                                
+                                // Set the session key from handshake (replaces symmetric derivation)
+                                self.message_exchange.session_manager_mut().set_session_key(peer_id, session_key);
+                                
+                                info!("🔑 Registered quantum-resistant session key for {}", peer_id);
                             }
                             HandshakeEvent::Failed { peer_id, error } => {
                                 warn!("❌ Handshake with {} failed: {}", peer_id, error);
@@ -275,9 +305,10 @@ impl P2PNode {
             SwarmEvent::ConnectionEstablished { peer_id, endpoint, .. } => {
                 info!("✓ Connected to {}", peer_id);
                 
-                // Auto-register peer keys for signature verification (mock for now)
-                let our_verify_key = self.message_exchange.session_manager().public_key();
-                self.message_exchange.session_manager_mut().register_peer(peer_id, our_verify_key);
+                // Initiate quantum-safe handshake
+                if let Err(e) = self.swarm.behaviour_mut().handshake.initiate_handshake(peer_id) {
+                    warn!("Failed to initiate handshake with {}: {}", peer_id, e);
+                }
             }
             SwarmEvent::ConnectionClosed { peer_id, cause, .. } => {
                 debug!("Connection to {} closed: {:?}", peer_id, cause);

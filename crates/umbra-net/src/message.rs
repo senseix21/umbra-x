@@ -117,7 +117,7 @@ impl MessageExchange {
         let plaintext = envelope.decrypt(&encrypted_data)
             .map_err(|e| NetError::Crypto(format!("Decrypt: {}", e)))?;
 
-        // Verify signature if present
+        // Verify signature if present AND peer key is registered
         if !enc_msg.signature.is_empty() {
             // Parse signature
             if enc_msg.signature.len() != 64 {
@@ -128,9 +128,14 @@ impl MessageExchange {
             sig_bytes.copy_from_slice(&enc_msg.signature);
             let signature = ed25519_dalek::Signature::from_bytes(&sig_bytes);
             
-            // Verify against plaintext
-            self.session_mgr.verify(&peer, &plaintext, &signature)
-                .map_err(|e| NetError::Crypto(format!("Signature verification failed: {}", e)))?;
+            // Try to verify - if peer key not registered, skip verification (backward compat)
+            if self.session_mgr.get_peer_key(&peer).is_some() {
+                self.session_mgr.verify(&peer, &plaintext, &signature)
+                    .map_err(|e| NetError::Crypto(format!("Signature verification failed: {}", e)))?;
+                debug!("✅ Signature verified for peer {}", peer);
+            } else {
+                debug!("⚠️  Peer key not registered, skipping signature verification for {}", peer);
+            }
         }
 
         // Deserialize chat message

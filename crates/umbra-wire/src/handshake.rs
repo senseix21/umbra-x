@@ -34,6 +34,7 @@ mod tests {
             x25519_pk: vec![5u8; 32],
             pq_pk: vec![],
             signature: vec![9u8; 64],
+            verify_key: vec![7u8; 32],
         };
         
         let msg = HandshakeMessage {
@@ -47,6 +48,7 @@ mod tests {
             assert_eq!(decoded_init.peer_id, init.peer_id);
             assert_eq!(decoded_init.x25519_pk, init.x25519_pk);
             assert_eq!(decoded_init.signature, init.signature);
+            assert_eq!(decoded_init.verify_key, init.verify_key);
         } else {
             panic!("Expected Init message");
         }
@@ -59,6 +61,7 @@ mod tests {
             x25519_pk: vec![5u8; 32],
             pq_ct: vec![],
             signature: vec![9u8; 64],
+            verify_key: vec![7u8; 32],
         };
         
         let msg = HandshakeMessage {
@@ -72,6 +75,7 @@ mod tests {
             assert_eq!(decoded_resp.peer_id, resp.peer_id);
             assert_eq!(decoded_resp.x25519_pk, resp.x25519_pk);
             assert_eq!(decoded_resp.signature, resp.signature);
+            assert_eq!(decoded_resp.verify_key, resp.verify_key);
         } else {
             panic!("Expected Resp message");
         }

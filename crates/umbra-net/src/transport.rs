@@ -65,6 +65,8 @@ pub struct P2PNode {
     local_peer_id: PeerId,
     message_rx: Option<tokio::sync::mpsc::UnboundedReceiver<(PeerId, Vec<u8>)>>,
     message_tx: tokio::sync::mpsc::UnboundedSender<(PeerId, Vec<u8>)>,
+    connection_rx: Option<tokio::sync::mpsc::UnboundedReceiver<PeerId>>,
+    connection_tx: tokio::sync::mpsc::UnboundedSender<PeerId>,
     message_exchange: crate::message::MessageExchange,
 }
 
@@ -130,6 +132,7 @@ impl P2PNode {
             .map_err(|e| crate::error::NetError::Transport(format!("Listen failed: {:?}", e)))?;
         
         let (message_tx, message_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (connection_tx, connection_rx) = tokio::sync::mpsc::unbounded_channel();
         
         let message_exchange = crate::message::MessageExchange::new(local_peer_id)
             .map_err(|e| crate::error::NetError::Transport(format!("MessageExchange init: {}", e)))?;
@@ -139,6 +142,8 @@ impl P2PNode {
             local_peer_id,
             message_rx: Some(message_rx),
             message_tx,
+            connection_rx: Some(connection_rx),
+            connection_tx,
             message_exchange,
         })
     }
@@ -151,9 +156,23 @@ impl P2PNode {
         self.swarm.listeners().cloned().collect()
     }
     
-    pub async fn dial(&mut self, addr: Multiaddr) -> crate::error::Result<()> {
-        self.swarm.dial(addr)
+    pub fn dial(&mut self, addr: Multiaddr) -> crate::error::Result<()> {
+        // Extract peer ID from multiaddr if present
+        use libp2p::multiaddr::Protocol;
+        let peer_id = addr.iter()
+            .find_map(|p| if let Protocol::P2p(peer_id) = p { Some(peer_id) } else { None });
+        
+        // If we have a peer ID, add to Kademlia routing table first
+        if let Some(peer_id) = peer_id {
+            info!("Adding peer {} to routing table", peer_id);
+            self.swarm.behaviour_mut().kad.add_address(&peer_id, addr.clone());
+        }
+        
+        // Dial the peer
+        self.swarm.dial(addr.clone())
             .map_err(|e| crate::error::NetError::Transport(format!("Dial failed: {:?}", e)))?;
+        
+        info!("Dial request sent for {}", addr);
         Ok(())
     }
     
@@ -210,6 +229,11 @@ impl P2PNode {
     /// Take message receiver for application use
     pub fn take_message_receiver(&mut self) -> Option<tokio::sync::mpsc::UnboundedReceiver<(PeerId, Vec<u8>)>> {
         self.message_rx.take()
+    }
+    
+    /// Take connection receiver for application use
+    pub fn take_connection_receiver(&mut self) -> Option<tokio::sync::mpsc::UnboundedReceiver<PeerId>> {
+        self.connection_rx.take()
     }
     
     /// Get connected peers
@@ -302,8 +326,11 @@ impl P2PNode {
                     _ => {}
                 }
             }
-            SwarmEvent::ConnectionEstablished { peer_id, endpoint, .. } => {
+            SwarmEvent::ConnectionEstablished { peer_id,  .. } => {
                 info!("✓ Connected to {}", peer_id);
+                
+                // Notify application
+                let _ = self.connection_tx.send(peer_id);
                 
                 // Initiate quantum-safe handshake
                 if let Err(e) = self.swarm.behaviour_mut().handshake.initiate_handshake(peer_id) {
@@ -317,9 +344,17 @@ impl P2PNode {
                 debug!("Incoming connection");
             }
             SwarmEvent::OutgoingConnectionError { peer_id, error, .. } => {
-                warn!("Outgoing connection error to {:?}: {}", peer_id, error);
+                warn!("❌ Outgoing connection error to {:?}: {}", peer_id, error);
             }
-            _ => {}
+            SwarmEvent::Dialing { peer_id, .. } => {
+                info!("📞 Dialing peer: {:?}", peer_id);
+            }
+            SwarmEvent::IncomingConnectionError { .. } => {
+                debug!("Incoming connection error");
+            }
+            e => {
+                debug!("Unhandled swarm event: {:?}", e);
+            }
         }
         
         Ok(())

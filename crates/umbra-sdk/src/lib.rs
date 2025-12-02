@@ -22,9 +22,9 @@ impl Node {
             .collect()
     }
     
-    pub async fn dial(&mut self, addr: &str) -> Result<()> {
+    pub fn dial(&mut self, addr: &str) -> Result<()> {
         let multiaddr: libp2p::Multiaddr = addr.parse()?;
-        self.p2p.dial(multiaddr).await?;
+        self.p2p.dial(multiaddr)?;
         Ok(())
     }
     
@@ -52,6 +52,11 @@ impl Node {
     
     pub async fn run(&mut self) -> Result<()> {
         self.p2p.run().await?;
+        Ok(())
+    }
+    
+    pub async fn poll_once(&mut self) -> Result<()> {
+        self.p2p.poll_once().await?;
         Ok(())
     }
 }

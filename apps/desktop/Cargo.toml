@@ -6,13 +6,16 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
-umbra-sdk = { path = "../../crates/umbra-sdk" }
-tokio = { workspace = true }
+umbra-net = { path = "../../crates/umbra-net" }
+libp2p = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
 anyhow = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tauri = { version = "2.0", features = ["protocol-asset"] }
+tauri-plugin-opener = "2.0"
 
-# TODO (W7-W9): Add tauri dependencies
-# tauri = "2.0"
-# serde = { workspace = true }
-# serde_json = { workspace = true }
+[build-dependencies]
+tauri-build = { version = "2.0", features = [] }

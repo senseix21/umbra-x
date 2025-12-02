@@ -12,7 +12,7 @@ use umbra_crypto::handshake::{
     HandshakeResp as CryptoHandshakeResp,
 };
 use ed25519_dalek::{SigningKey, VerifyingKey};
-use tracing::{debug, info, error};
+use tracing::{debug, info};
 
 /// Events emitted by the handshake protocol
 #[derive(Debug)]

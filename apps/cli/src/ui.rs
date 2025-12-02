@@ -30,10 +30,6 @@ impl UI {
         println!("{} {}", "[ERR]".red().bold(), msg.bright_red());
     }
 
-    pub fn print_info_line(label: &str, value: &str) {
-        println!("  {} {}", label.bright_cyan(), value.white());
-    }
-
     pub fn print_node_info(peer_id: &PeerId, addrs: &[Multiaddr]) {
         println!();
         println!("{}", "┌─ Node Information ───────────────────────────────────────────────────┐".bright_blue());

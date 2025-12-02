@@ -1,4 +1,4 @@
-use crate::error::{CryptoError, Result};
+use crate::error::Result;
 use x25519_dalek::{PublicKey, StaticSecret};
 use sha2::{Sha256, Digest};
 

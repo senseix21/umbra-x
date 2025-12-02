@@ -4,7 +4,7 @@ use umbra_crypto::handshake::{
     HandshakeInit as CryptoHandshakeInit,
     HandshakeResp as CryptoHandshakeResp,
 };
-use crate::handshake::{HandshakeInit, HandshakeResp, HandshakeMessage, handshake_message};
+use crate::handshake::{HandshakeInit, HandshakeResp};
 
 impl From<&CryptoHandshakeInit> for HandshakeInit {
     fn from(init: &CryptoHandshakeInit) -> Self {

@@ -4,9 +4,8 @@
 use crate::error::{NetError, Result};
 use libp2p::PeerId;
 use prost::Message;
-use std::collections::HashMap;
-use tracing::{debug, warn};
-use umbra_crypto::session::{SessionKey, SessionManager};
+use tracing::debug;
+use umbra_crypto::session::SessionManager;
 use umbra_crypto::aead::Envelope;
 use umbra_wire::message::{ChatMessage, EncryptedMessage};
 use ed25519_dalek;
@@ -76,7 +75,7 @@ impl MessageExchange {
 
         // Create encrypted message
         let enc_msg = EncryptedMessage {
-            sender: peer.to_bytes(),
+            sender: self.local_peer_id.to_bytes(),
             nonce: nonce.to_vec(),
             ciphertext: ciphertext.to_vec(),
             timestamp: chat_msg.timestamp,
@@ -129,7 +128,7 @@ impl MessageExchange {
                 let signature = ed25519_dalek::Signature::from_bytes(&sig_bytes);
                 
                 // Try to verify - if peer key not registered or verification fails, just log warning
-                if let Some(_) = self.session_mgr.get_peer_key(&peer) {
+                if self.session_mgr.get_peer_key(&peer).is_some() {
                     match self.session_mgr.verify(&peer, &plaintext, &signature) {
                         Ok(_) => {
                             debug!("✅ Signature verified for peer {}", peer);

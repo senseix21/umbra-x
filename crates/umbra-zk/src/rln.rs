@@ -82,7 +82,7 @@ impl RlnProver {
         let mut hasher = Sha256::new();
         hasher.update(b"RLN-NULLIFIER");
         hasher.update(&self.secret);
-        hasher.update(&epoch.to_le_bytes());
+        hasher.update(epoch.to_le_bytes());
         hasher.finalize().to_vec()
     }
 
@@ -136,7 +136,7 @@ impl RlnProver {
         hasher.update(b"RLN-PROOF");
         hasher.update(&self.secret);
         hasher.update(message);
-        hasher.update(&epoch.to_le_bytes());
+        hasher.update(epoch.to_le_bytes());
         hasher.update(nullifier);
         Ok(hasher.finalize().to_vec())
     }
@@ -238,7 +238,7 @@ impl RlnVerifier {
         // Insert nullifier after verification passes
         self.seen_nullifiers
             .entry(proof.epoch)
-            .or_insert_with(HashSet::new)
+            .or_default()
             .insert(proof.nullifier.clone());
         
         Ok(())

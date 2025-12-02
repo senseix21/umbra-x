@@ -64,10 +64,9 @@ impl ChatSession {
     fn handle_incoming_message(&mut self, peer_id: PeerId, data: Vec<u8>) {
         // Try to decrypt with new message exchange protocol
         match self.node.decrypt_message(peer_id, &data) {
-            Ok((username, content)) => {
+            Ok((_username, content)) => {
                 let peer_short = peer_id.to_string().chars().take(8).collect::<String>();
                 UI::print_incoming_message(&peer_short, &content, &self.username);
-                return;
             }
             Err(_) => {
                 // Fall back to legacy topic-based encryption for backwards compatibility

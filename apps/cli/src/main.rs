@@ -87,7 +87,7 @@ async fn start_chat(port: Option<u16>, connect: Option<String>, topic: String, u
     if let Some(peer_addr) = connect {
         UI::print_connecting(&peer_addr);
         let addr: libp2p::Multiaddr = peer_addr.parse()?;
-        node.dial(addr).await?;
+        node.dial(addr)?;
         UI::print_success("Connection initiated");
         
         // Give time for connection to establish

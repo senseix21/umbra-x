@@ -1,6 +1,6 @@
 use crate::aead::Envelope;
 use crate::error::Result;
-use chacha20poly1305::{aead::OsRng, AeadCore, ChaCha20Poly1305, KeyInit};
+use chacha20poly1305::{aead::OsRng, ChaCha20Poly1305, KeyInit};
 
 /// Simple symmetric encryption for chat messages
 /// Uses ChaCha20-Poly1305 AEAD with a shared key

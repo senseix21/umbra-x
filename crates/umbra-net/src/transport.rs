@@ -369,11 +369,6 @@ impl P2PNode {
 
     // Handshake methods
     
-    /// Register a peer's verify key (must be done before handshake)
-    pub fn register_peer_key(&mut self, peer_id: PeerId, verify_key: ed25519_dalek::VerifyingKey) {
-        self.swarm.behaviour_mut().handshake.register_peer(peer_id, verify_key);
-    }
-    
     /// Get session key for a peer (if handshake completed)
     pub fn get_session_key(&self, peer_id: &PeerId) -> Option<&[u8; 32]> {
         self.swarm.behaviour().handshake.get_session_key(peer_id)

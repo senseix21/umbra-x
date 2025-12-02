@@ -1,3 +1,6 @@
+// Simplified handshake behaviour - no more 6 HashMaps!
+// Just 2 fields: identity + sessions (state machine)
+
 use libp2p::swarm::{ConnectionHandler, NetworkBehaviour};
 use libp2p::PeerId;
 use std::collections::{HashMap, VecDeque};
@@ -13,6 +16,18 @@ use umbra_crypto::handshake::{
 };
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use tracing::{debug, info};
+
+/// Session state for each peer - SIMPLE STATE MACHINE
+#[derive(Debug, Clone)]
+enum SessionState {
+    /// Handshake initiated, waiting for response
+    Pending(CryptoHandshakeInit),
+    /// Handshake complete, session established
+    Established {
+        session_key: [u8; 32],
+        verify_key: VerifyingKey,
+    },
+}
 
 /// Events emitted by the handshake protocol
 #[derive(Debug)]
@@ -37,42 +52,44 @@ pub enum HandshakeOutbound {
     SendResp { peer_id: PeerId, data: Vec<u8> },
 }
 
-/// Handshake protocol behaviour
+/// Handshake protocol behaviour - SIMPLIFIED TO 4 FIELDS
 pub struct HandshakeBehaviour {
+    /// Our signing key for authentication
     identity: SigningKey,
-    peer_keys: HashMap<PeerId, VerifyingKey>,
+    
+    /// Session state per peer (combines all the old HashMaps)
+    sessions: HashMap<PeerId, SessionState>,
+    
+    /// Events to emit (temporary until we move to channels)
     pending_events: VecDeque<HandshakeEvent>,
+    
+    /// Messages to send (temporary until we move to channels)
     pending_outbound: VecDeque<HandshakeOutbound>,
-    session_keys: HashMap<PeerId, [u8; 32]>,
-    pending_inits: HashMap<PeerId, CryptoHandshakeInit>,
 }
 
 impl HandshakeBehaviour {
     pub fn new(identity: SigningKey) -> Self {
         Self {
             identity,
-            peer_keys: HashMap::new(),
+            sessions: HashMap::new(),
             pending_events: VecDeque::new(),
             pending_outbound: VecDeque::new(),
-            session_keys: HashMap::new(),
-            pending_inits: HashMap::new(),
         }
-    }
-
-    /// Register a peer's verify key (must be done before handshake)
-    pub fn register_peer(&mut self, peer_id: PeerId, verify_key: VerifyingKey) {
-        self.peer_keys.insert(peer_id, verify_key);
     }
 
     /// Get session key for a peer (if handshake completed)
     pub fn get_session_key(&self, peer_id: &PeerId) -> Option<&[u8; 32]> {
-        self.session_keys.get(peer_id)
+        match self.sessions.get(peer_id) {
+            Some(SessionState::Established { session_key, .. }) => Some(session_key),
+            _ => None,
+        }
     }
 
     /// Initiate handshake with a peer
     pub fn initiate_handshake(&mut self, peer_id: PeerId) -> Result<(), String> {
-        if self.session_keys.contains_key(&peer_id) {
-            return Ok(()); // Already have session key
+        // Check if already established
+        if matches!(self.sessions.get(&peer_id), Some(SessionState::Established { .. })) {
+            return Ok(());
         }
 
         debug!("Initiating handshake with {}", peer_id);
@@ -84,16 +101,15 @@ impl HandshakeBehaviour {
         let crypto_init = hs.initiate(peer_id)
             .map_err(|e| format!("Failed to initiate handshake: {:?}", e))?;
         
-        // Store for completion later
-        self.pending_inits.insert(peer_id, crypto_init.clone());
+        // Store in pending state
+        self.sessions.insert(peer_id, SessionState::Pending(crypto_init.clone()));
         
-        // Convert to wire format  
+        // Convert to wire format and queue for sending
         let wire_init = WireHandshakeInit::from(&crypto_init);
         let msg = HandshakeMessage {
             message: Some(handshake_message::Message::Init(wire_init)),
         };
         
-        // Queue for sending via gossipsub
         self.pending_outbound.push_back(HandshakeOutbound::SendInit {
             peer_id,
             data: msg.encode_to_vec(),
@@ -136,10 +152,9 @@ impl HandshakeBehaviour {
         let crypto_init = CryptoHandshakeInit::try_from(init)
             .map_err(|e| format!("Invalid init message: {}", e))?;
 
-        // Extract and register peer's verify key
+        // Extract peer's verify key
         let peer_key = ed25519_dalek::VerifyingKey::from_bytes(&crypto_init.verify_key)
             .map_err(|e| format!("Invalid verify key: {}", e))?;
-        self.peer_keys.insert(peer_id, peer_key);
 
         // Create handshake and respond
         let hs = Handshake::new(self.identity.clone())
@@ -148,11 +163,15 @@ impl HandshakeBehaviour {
         let (crypto_resp, session_key) = hs.respond(peer_id, &crypto_init, &peer_key)
             .map_err(|e| format!("Failed to respond to handshake: {:?}", e))?;
 
-        // Store session key
-        self.session_keys.insert(peer_id, session_key);
-        info!("Handshake completed with {} (responder)", peer_id);
+        // Store session as established
+        self.sessions.insert(peer_id, SessionState::Established {
+            session_key,
+            verify_key: peer_key,
+        });
+        
+        info!("✅ Handshake completed with {} (responder)", peer_id);
 
-        // Emit event with verify key
+        // Emit completion event
         self.pending_events.push_back(HandshakeEvent::Completed {
             peer_id,
             session_key,
@@ -173,10 +192,9 @@ impl HandshakeBehaviour {
         let crypto_resp = CryptoHandshakeResp::try_from(resp)
             .map_err(|e| format!("Invalid resp message: {}", e))?;
 
-        // Extract and register peer's verify key
+        // Extract peer's verify key
         let peer_key = ed25519_dalek::VerifyingKey::from_bytes(&crypto_resp.verify_key)
             .map_err(|e| format!("Invalid verify key: {}", e))?;
-        self.peer_keys.insert(peer_id, peer_key);
 
         // Complete handshake
         let hs = Handshake::new(self.identity.clone())
@@ -185,12 +203,15 @@ impl HandshakeBehaviour {
         let session_key = hs.complete(&crypto_resp, &peer_key)
             .map_err(|e| format!("Failed to complete handshake: {:?}", e))?;
 
-        // Store session key
-        self.session_keys.insert(peer_id, session_key);
-        self.pending_inits.remove(&peer_id);
-        info!("Handshake completed with {} (initiator)", peer_id);
+        // Update to established state
+        self.sessions.insert(peer_id, SessionState::Established {
+            session_key,
+            verify_key: peer_key,
+        });
+        
+        info!("✅ Handshake completed with {} (initiator)", peer_id);
 
-        // Emit event with verify key
+        // Emit completion event
         self.pending_events.push_back(HandshakeEvent::Completed {
             peer_id,
             session_key,
@@ -262,19 +283,24 @@ mod tests {
         let identity = gen_keypair();
         let behaviour = HandshakeBehaviour::new(identity);
         
-        assert_eq!(behaviour.session_keys.len(), 0);
-        assert_eq!(behaviour.peer_keys.len(), 0);
+        assert_eq!(behaviour.sessions.len(), 0);
     }
 
     #[test]
-    fn test_register_peer() {
+    fn test_session_state_simple() {
         let identity = gen_keypair();
         let mut behaviour = HandshakeBehaviour::new(identity);
         
         let peer_id = PeerId::random();
-        let peer_key = gen_keypair().verifying_key();
         
-        behaviour.register_peer(peer_id, peer_key);
-        assert!(behaviour.peer_keys.contains_key(&peer_id));
+        // No session initially
+        assert!(behaviour.get_session_key(&peer_id).is_none());
+        
+        // After initiate, session is Pending
+        behaviour.initiate_handshake(peer_id).unwrap();
+        assert!(matches!(
+            behaviour.sessions.get(&peer_id),
+            Some(SessionState::Pending(_))
+        ));
     }
 }

@@ -294,13 +294,7 @@ impl P2PNode {
                                 warn!("Handshake message processing failed: {}", e);
                             }
                         } else {
-                            // Regular chat message
-                            info!(
-                                "Received message from {}: {} bytes",
-                                propagation_source,
-                                message.data.len()
-                            );
-                            // Forward message to application layer
+                            // Regular chat message (silent logging)
                             let _ = self.message_tx.send((propagation_source, message.data));
                         }
                     }
@@ -327,7 +321,7 @@ impl P2PNode {
                 }
             }
             SwarmEvent::ConnectionEstablished { peer_id,  .. } => {
-                info!("✓ Connected to {}", peer_id);
+                // Connected (silent)
                 
                 // Notify application
                 let _ = self.connection_tx.send(peer_id);
@@ -344,10 +338,12 @@ impl P2PNode {
                 debug!("Incoming connection");
             }
             SwarmEvent::OutgoingConnectionError { peer_id, error, .. } => {
-                warn!("❌ Outgoing connection error to {:?}: {}", peer_id, error);
+                // Connection error (silent - user will notice no messages)
+                let _ = (peer_id, error);
             }
             SwarmEvent::Dialing { peer_id, .. } => {
-                info!("📞 Dialing peer: {:?}", peer_id);
+                // Dialing (silent)
+                let _ = peer_id;
             }
             SwarmEvent::IncomingConnectionError { .. } => {
                 debug!("Incoming connection error");

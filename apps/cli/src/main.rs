@@ -6,6 +6,7 @@ use chat::ChatSession;
 use clap::{Parser, Subcommand};
 use tracing::info;
 use umbra_net::P2PNode;
+use umbra_identity::{Identity, Prover, Storage};
 use ui::UI;
 
 #[derive(Parser)]
@@ -14,6 +15,10 @@ use ui::UI;
 struct Cli {
     #[command(subcommand)]
     command: Commands,
+    
+    /// Data directory for identity and keys (default: ~/.umbra)
+    #[arg(long, global = true)]
+    data_dir: Option<String>,
 }
 
 #[derive(Subcommand)]
@@ -37,29 +42,65 @@ enum Commands {
         username: String,
     },
     
+    /// Identity management
+    Identity {
+        #[command(subcommand)]
+        command: IdentityCommands,
+    },
+    
     /// Show node info
     Info,
+}
+
+#[derive(Subcommand)]
+enum IdentityCommands {
+    /// Create a new identity
+    Create {
+        /// Password to derive identity from
+        password: String,
+    },
+    
+    /// Show current identity
+    Show,
+    
+    /// Verify an identity proof
+    Verify {
+        /// Hex-encoded proof bytes
+        proof: String,
+        
+        /// Hex-encoded identity ID
+        identity_id: String,
+    },
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
-    
+
     let cli = Cli::parse();
     
+    // Set data directory globally
+    let data_dir = cli.data_dir.clone().unwrap_or_else(|| {
+        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+        format!("{}/.umbra", home)
+    });
+
     match cli.command {
         Commands::Start { port, connect, topic, username } => {
-            start_chat(port, connect, topic, username).await?;
+            start_chat(port, connect, topic, username, &data_dir).await?;
+        }
+        Commands::Identity { command } => {
+            handle_identity_command(command, &data_dir).await?;
         }
         Commands::Info => {
             show_info().await?;
         }
     }
-    
+
     Ok(())
 }
 
-async fn start_chat(port: Option<u16>, connect: Option<String>, topic: String, username: String) -> Result<()> {
+async fn start_chat(port: Option<u16>, connect: Option<String>, topic: String, username: String, data_dir: &str) -> Result<()> {
     UI::print_banner();
     
     // Create node with specific port if provided
@@ -97,7 +138,7 @@ async fn start_chat(port: Option<u16>, connect: Option<String>, topic: String, u
     UI::print_chat_ready();
     
     // Create and run chat session
-    let session = ChatSession::new(node, username, topic);
+    let session = ChatSession::new(node, username, topic, data_dir.to_string());
     session.run().await?;
     
     Ok(())
@@ -105,5 +146,90 @@ async fn start_chat(port: Option<u16>, connect: Option<String>, topic: String, u
 
 async fn show_info() -> Result<()> {
     UI::print_info();
+    Ok(())
+}
+
+async fn handle_identity_command(command: IdentityCommands, data_dir: &str) -> Result<()> {
+    let storage = Storage::new(data_dir)?;
+
+    match command {
+        IdentityCommands::Create { password } => {
+            println!("🔐 Creating identity...");
+            
+            // Create identity
+            let identity = Identity::create(&password)?;
+            println!("✓ Identity created");
+            println!("  ID: {}", hex::encode(&identity.id));
+            
+            // Save identity
+            storage.save_identity(&identity)?;
+            println!("✓ Identity saved to {}/umbra_identity.bin", data_dir);
+            
+            // Setup prover if not exists
+            if !storage.has_keys() {
+                println!("🔧 Setting up ZK prover (one-time, ~30s)...");
+                let prover = Prover::setup()?;
+                storage.save_keys(&prover)?;
+                println!("✓ Prover keys saved");
+            }
+            
+            println!("\n✅ Identity ready!");
+        }
+        
+        IdentityCommands::Show => {
+            if !storage.has_identity() {
+                println!("❌ No identity found. Create one with: umbra identity create <password>");
+                return Ok(());
+            }
+            
+            let identity = storage.load_identity()?;
+            println!("🆔 Current Identity:");
+            println!("  ID: {}", hex::encode(&identity.id));
+            println!("  Location: {}/umbra_identity.bin", data_dir);
+            
+            if storage.has_keys() {
+                println!("  Prover: ✓ Ready");
+            } else {
+                println!("  Prover: ✗ Not setup (run create to initialize)");
+            }
+        }
+        
+        IdentityCommands::Verify { proof, identity_id } => {
+            println!("🔍 Verifying identity proof...");
+            
+            // Decode inputs
+            let proof_bytes = hex::decode(&proof)
+                .map_err(|e| anyhow::anyhow!("Invalid proof hex: {}", e))?;
+            let id_bytes = hex::decode(&identity_id)
+                .map_err(|e| anyhow::anyhow!("Invalid identity_id hex: {}", e))?;
+            
+            if id_bytes.len() != 32 {
+                return Err(anyhow::anyhow!("Identity ID must be 32 bytes"));
+            }
+            
+            let mut id = [0u8; 32];
+            id.copy_from_slice(&id_bytes);
+            
+            // Load or setup prover
+            let prover = if storage.has_keys() {
+                storage.load_keys()?
+            } else {
+                println!("⚠️  No prover keys found, setting up...");
+                let p = Prover::setup()?;
+                storage.save_keys(&p)?;
+                p
+            };
+            
+            // Verify
+            let valid = umbra_identity::verify_identity_proof(&prover, &proof_bytes, &id)?;
+            
+            if valid {
+                println!("✅ Proof VALID for identity {}", hex::encode(&id[..8]));
+            } else {
+                println!("❌ Proof INVALID");
+            }
+        }
+    }
+    
     Ok(())
 }

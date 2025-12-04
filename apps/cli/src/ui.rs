@@ -65,6 +65,7 @@ impl UI {
         println!("{}", "  Commands:".bright_yellow().bold());
         println!("    {} - Show help", "/help".bright_magenta());
         println!("    {} - Show connected peers", "/peers".bright_magenta());
+        println!("    {} - Show your identity", "/whoami".bright_magenta());
         println!("    {} - Exit chat", "/quit".bright_magenta());
         println!();
         println!("{}", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".bright_blue());
@@ -81,17 +82,15 @@ impl UI {
         println!("{} {}: {}", "[ERR]".red().bold(), "Failed to send".bright_red(), error.red());
     }
 
-    pub fn print_incoming_message(peer_short: &str, msg: &str, username: &str) {
+    pub fn print_incoming_message(sender_username: &str, msg: &str) {
         let timestamp = chrono::Local::now().format("%H:%M:%S");
         println!(
-            "{} {} {} {}",
+            "\n{} {} {} {}",
+            sender_username.bright_magenta().bold(),
             format!("[{}]", timestamp).dimmed(),
-            format!("@{}", peer_short).bright_cyan().bold(),
             ">".dimmed(),
             msg.bright_white()
         );
-        print!("{} ", format!("{}> ", username).bright_magenta().bold());
-        io::stdout().flush().ok();
     }
 
     pub fn print_decryption_error() {
@@ -111,6 +110,7 @@ impl UI {
         println!();
         println!("  {} - Show this help message", "/help".bright_magenta().bold());
         println!("  {} - Show connected peers and node information", "/peers".bright_magenta().bold());
+        println!("  {} - Show your identity ID", "/whoami".bright_magenta().bold());
         println!("  {} - Clear the screen", "/clear".bright_magenta().bold());
         println!("  {} - Exit the chat (or use /exit)", "/quit".bright_magenta().bold());
         println!();

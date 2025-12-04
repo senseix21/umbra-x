@@ -4,4 +4,4 @@ pub mod message {
     include!(concat!(env!("OUT_DIR"), "/umbra.message.rs"));
 }
 
-pub use message::{ChatMessage, EncryptedMessage, Message};
+pub use message::{ChatMessage, EncryptedMessage, IdentityAnnouncement, Message};

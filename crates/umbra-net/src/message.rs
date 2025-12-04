@@ -48,6 +48,7 @@ impl MessageExchange {
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_secs(),
+            identity_id: vec![],
         };
 
         // Serialize to protobuf
@@ -80,6 +81,8 @@ impl MessageExchange {
             ciphertext: ciphertext.to_vec(),
             timestamp: chat_msg.timestamp,
             signature: signature.to_bytes().to_vec(),
+            identity_id: vec![],
+            identity_proof: vec![],
         };
 
         // Increment message counter

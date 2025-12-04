@@ -48,7 +48,7 @@ async fn test_two_node_discovery_and_ping() {
     
     // Node2 dials Node1
     println!("Node2 dialing Node1...");
-    node2.dial(node1_addr.clone()).await.unwrap();
+    node2.dial(node1_addr.clone()).unwrap();
     
     // Run both nodes concurrently for a short time
     let node1_task = tokio::spawn(async move {

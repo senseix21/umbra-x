@@ -42,7 +42,7 @@ async fn test_gossipsub_message_exchange() {
     node2.subscribe("umbra-test").unwrap();
     
     // Connect node2 to node1
-    node2.dial(node1_addr).await.unwrap();
+    node2.dial(node1_addr).unwrap();
     node2.add_peer(node1_peer_id, node1.listening_addresses()[0].clone());
     
     // Run both nodes concurrently and exchange messages

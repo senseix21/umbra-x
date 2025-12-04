@@ -45,7 +45,7 @@ async fn test_50_node_swarm() {
         let mut node = node_task.await.unwrap();
         
         // Connect to bootstrap
-        node.dial(bootstrap_addr.clone()).await.ok();
+        node.dial(bootstrap_addr.clone()).ok();
         node.add_peer(bootstrap_peer_id, bootstrap_addr.clone());
         
         nodes.push(node);

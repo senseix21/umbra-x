@@ -8,10 +8,9 @@ members = [
     "crates/umbra-wire",
     "crates/umbra-vault",
     "crates/umbra-sdk",
+    "crates/umbra-identity",
     "apps/node",
-    "apps/desktop",
     "apps/cli",
-    "examples",
 ]
 
 [workspace.package]

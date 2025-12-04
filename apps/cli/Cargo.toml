@@ -11,6 +11,7 @@ path = "src/main.rs"
 umbra-sdk = { path = "../../crates/umbra-sdk" }
 umbra-net = { path = "../../crates/umbra-net" }
 umbra-crypto = { path = "../../crates/umbra-crypto" }
+umbra-identity = { path = "../../crates/umbra-identity" }
 tokio = { version = "1", features = ["full"] }
 anyhow = "1"
 tracing = "0.1"

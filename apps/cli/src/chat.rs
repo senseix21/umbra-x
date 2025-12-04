@@ -3,6 +3,8 @@ use libp2p::PeerId;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use umbra_crypto::ChatCrypto;
 use umbra_net::P2PNode;
+use umbra_identity::{Identity, Prover, Storage};
+use std::collections::HashMap;
 
 use crate::ui::UI;
 
@@ -10,14 +12,37 @@ pub struct ChatSession {
     node: P2PNode,
     username: String,
     topic: String,
+    identity: Option<Identity>,
+    #[allow(dead_code)]
+    prover: Option<Prover>,
+    #[allow(dead_code)]
+    peer_identities: HashMap<PeerId, [u8; 32]>,
+    data_dir: String,
 }
 
 impl ChatSession {
-    pub fn new(node: P2PNode, username: String, topic: String) -> Self {
+    pub fn new(node: P2PNode, username: String, topic: String, data_dir: String) -> Self {
+        // Try to load identity from specified data directory
+        let (identity, prover) = if let Ok(storage) = Storage::new(&data_dir) {
+            let id = storage.load_identity().ok();
+            let pr = storage.load_keys().ok();
+            (id, pr)
+        } else {
+            (None, None)
+        };
+        
+        if identity.is_some() {
+            println!("🔐 Identity loaded");
+        }
+        
         Self {
             node,
             username,
             topic,
+            identity,
+            prover,
+            peer_identities: HashMap::new(),
+            data_dir,
         }
     }
 
@@ -64,9 +89,8 @@ impl ChatSession {
     fn handle_incoming_message(&mut self, peer_id: PeerId, data: Vec<u8>) {
         // Try to decrypt with new message exchange protocol
         match self.node.decrypt_message(peer_id, &data) {
-            Ok((_username, content)) => {
-                let peer_short = peer_id.to_string().chars().take(8).collect::<String>();
-                UI::print_incoming_message(&peer_short, &content, &self.username);
+            Ok((username, content)) => {
+                UI::print_incoming_message(&username, &content);
             }
             Err(_) => {
                 // Fall back to legacy topic-based encryption for backwards compatibility
@@ -76,7 +100,7 @@ impl ChatSession {
                     Ok(plaintext) => {
                         if let Ok(msg) = String::from_utf8(plaintext) {
                             let peer_short = peer_id.to_string().chars().take(8).collect::<String>();
-                            UI::print_incoming_message(&peer_short, &msg, &self.username);
+                            UI::print_incoming_message(&peer_short, &msg);
                         }
                     }
                     Err(_) => {
@@ -126,6 +150,16 @@ impl ChatSession {
 
         if message == "/clear" {
             UI::clear_screen();
+            UI::print_prompt(&self.username);
+            return Ok(true);
+        }
+
+        if message == "/whoami" {
+            if let Some(ref identity) = self.identity {
+                println!("🆔 Your identity: {}", hex::encode(&identity.id[..8]));
+            } else {
+                println!("⚠️  No identity loaded. Create one with: umbra identity create <password>");
+            }
             UI::print_prompt(&self.username);
             return Ok(true);
         }

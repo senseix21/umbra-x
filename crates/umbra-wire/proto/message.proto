@@ -9,12 +9,22 @@ message EncryptedMessage {
   bytes ciphertext = 3;    // Encrypted payload
   uint64 timestamp = 4;    // Unix timestamp
   bytes signature = 5;     // 64 bytes Ed25519 (optional, for authenticity)
+  bytes identity_id = 6;   // 32 bytes identity ID (optional)
+  bytes identity_proof = 7; // ZK proof bytes (optional)
 }
 
 // Plaintext message (before encryption)
 message ChatMessage {
   string username = 1;
   string content = 2;
+  uint64 timestamp = 3;
+  bytes identity_id = 4;   // 32 bytes identity ID (optional)
+}
+
+// Identity announcement
+message IdentityAnnouncement {
+  bytes identity_id = 1;   // 32 bytes
+  bytes proof = 2;         // ZK proof
   uint64 timestamp = 3;
 }
 
@@ -23,5 +33,6 @@ message Message {
   oneof payload {
     EncryptedMessage encrypted = 1;
     ChatMessage plaintext = 2;  // For testing only
+    IdentityAnnouncement identity = 3;
   }
 }

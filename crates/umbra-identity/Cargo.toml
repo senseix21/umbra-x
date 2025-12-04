@@ -1,0 +1,36 @@
+[package]
+name = "umbra-identity"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+# ZK-SNARKs
+ark-std = "0.4"
+ark-ff = "0.4"
+ark-ec = "0.4"
+ark-serialize = "0.4"
+ark-groth16 = "0.4"
+ark-bn254 = "0.4"
+ark-relations = "0.4"
+ark-r1cs-std = "0.4"
+ark-crypto-primitives = { version = "0.4", features = ["r1cs", "sponge"] }
+ark-snark = "0.4"
+
+# Workspace deps
+thiserror.workspace = true
+blake3.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+criterion = "0.5"
+hex = "0.4"
+tempfile = "3.8"
+
+[[bench]]
+name = "zkproof"
+harness = false

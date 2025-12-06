@@ -25,6 +25,7 @@ impl HandshakeMessage {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[allow(unused_imports)]
     use prost::Message;
     
     #[test]
@@ -35,6 +36,7 @@ mod tests {
             pq_pk: vec![],
             signature: vec![9u8; 64],
             verify_key: vec![7u8; 32],
+            pq_signature: vec![],
         };
         
         let msg = HandshakeMessage {
@@ -62,6 +64,7 @@ mod tests {
             pq_ct: vec![],
             signature: vec![9u8; 64],
             verify_key: vec![7u8; 32],
+            pq_signature: vec![],
         };
         
         let msg = HandshakeMessage {

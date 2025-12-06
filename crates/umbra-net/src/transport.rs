@@ -111,9 +111,10 @@ impl P2PNode {
             ),
             gossipsub,
             handshake: {
-                // Generate signing key for handshake
-                let signing_key = ed25519_dalek::SigningKey::from_bytes(&rand::random());
-                HandshakeBehaviour::new(signing_key)
+                // Generate identity key for handshake (hybrid Ed25519 + Dilithium3)
+                let identity = umbra_crypto::identity::IdentityKey::generate()
+                    .map_err(|e| crate::error::NetError::Crypto(format!("Identity generation failed: {}", e)))?;
+                HandshakeBehaviour::new(identity)
             },
         };
         
@@ -128,7 +129,8 @@ impl P2PNode {
         
         // Listen on QUIC with specified port
         let listen_addr = format!("/ip4/0.0.0.0/udp/{}/quic-v1", port);
-        swarm.listen_on(listen_addr.parse().unwrap())
+        swarm.listen_on(listen_addr.parse()
+            .map_err(|e| crate::error::NetError::Transport(format!("Invalid listen address: {:?}", e)))?)
             .map_err(|e| crate::error::NetError::Transport(format!("Listen failed: {:?}", e)))?;
         
         let (message_tx, message_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -210,8 +212,13 @@ impl P2PNode {
     }
 
     /// Decrypt received message
-    pub fn decrypt_message(&mut self, peer: PeerId, data: &[u8]) -> crate::error::Result<(String, String)> {
+    pub fn decrypt_message(&mut self, peer: PeerId, data: &[u8]) -> crate::error::Result<(String, String, Option<[u8; 32]>)> {
         self.message_exchange.decrypt_message(peer, data)
+    }
+    
+    /// Set identity for ZK proofs
+    pub fn set_identity(&mut self, identity: umbra_identity::Identity, prover: umbra_identity::Prover) {
+        self.message_exchange.set_identity(identity, prover);
     }
     
     /// Add a peer to the routing table

@@ -93,6 +93,18 @@ impl UI {
         );
     }
 
+    pub fn print_verified_message(sender_username: &str, msg: &str, identity_id: &str) {
+        let timestamp = chrono::Local::now().format("%H:%M:%S");
+        println!(
+            "\n{} {} {} {} {}",
+            sender_username.bright_magenta().bold(),
+            "✓".bright_green().bold(),
+            format!("[{}:{}]", timestamp, identity_id).dimmed(),
+            ">".dimmed(),
+            msg.bright_white()
+        );
+    }
+
     pub fn print_decryption_error() {
         println!("{} {}", "[WARN]".yellow().bold(), "Received encrypted message (decryption failed)".yellow());
     }

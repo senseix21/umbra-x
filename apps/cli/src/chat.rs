@@ -47,6 +47,15 @@ impl ChatSession {
     }
 
     pub async fn run(mut self) -> Result<()> {
+        // Set identity in node if available
+        if self.identity.is_some() && self.prover.is_some() {
+            // Take ownership to avoid clone
+            let identity = self.identity.take().unwrap();
+            let prover = self.prover.take().unwrap();
+            self.node.set_identity(identity, prover);
+            println!("✅ ZK identity verification enabled");
+        }
+
         // Get message receiver
         let mut message_rx = self
             .node
@@ -89,8 +98,15 @@ impl ChatSession {
     fn handle_incoming_message(&mut self, peer_id: PeerId, data: Vec<u8>) {
         // Try to decrypt with new message exchange protocol
         match self.node.decrypt_message(peer_id, &data) {
-            Ok((username, content)) => {
-                UI::print_incoming_message(&username, &content);
+            Ok((username, content, verified_identity)) => {
+                if let Some(id) = verified_identity {
+                    // Store verified identity
+                    self.peer_identities.insert(peer_id, id);
+                    let id_hex = hex::encode(&id[..8]);
+                    UI::print_verified_message(&username, &content, &id_hex);
+                } else {
+                    UI::print_incoming_message(&username, &content);
+                }
             }
             Err(_) => {
                 // Fall back to legacy topic-based encryption for backwards compatibility

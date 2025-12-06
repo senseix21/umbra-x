@@ -2,9 +2,8 @@
 // No bullshit, just keys mapped to peers
 
 use crate::error::Result;
-use crate::handshake::{Handshake, HandshakeInit, HandshakeResp};
-use crate::kem::HybridKem;
-use ed25519_dalek::{SigningKey, VerifyingKey};
+use crate::identity::IdentityKey;
+use ed25519_dalek::VerifyingKey;
 use libp2p::PeerId;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
@@ -58,8 +57,8 @@ impl Drop for SessionKey {
 
 /// Manages session keys for all peers
 pub struct SessionManager {
-    identity: SigningKey,
-    kem: HybridKem,
+    identity: IdentityKey,
+    // Note: KEM instance removed as it's created per-handshake, not reused globally
     sessions: HashMap<PeerId, SessionKey>,
     peer_keys: HashMap<PeerId, VerifyingKey>,
     local_peer_id: PeerId,
@@ -67,10 +66,9 @@ pub struct SessionManager {
 
 impl SessionManager {
     pub fn new(local_peer_id: PeerId) -> Result<Self> {
-        let identity = SigningKey::from_bytes(&rand::random());
+        let identity = IdentityKey::generate()?;
         Ok(Self {
             identity,
-            kem: HybridKem::generate()?,
             sessions: HashMap::new(),
             peer_keys: HashMap::new(),
             local_peer_id,
@@ -78,7 +76,7 @@ impl SessionManager {
     }
 
     /// Get our public identity key (for sharing with peers)
-    pub fn public_key(&self) -> VerifyingKey {
+    pub fn public_key(&self) -> &VerifyingKey {
         self.identity.verifying_key()
     }
 
@@ -92,13 +90,12 @@ impl SessionManager {
         self.peer_keys.get(peer)
     }
 
-    /// Sign data with our identity key
-    pub fn sign(&self, data: &[u8]) -> ed25519_dalek::Signature {
-        use ed25519_dalek::Signer;
+    /// Sign data with our identity key (returns hybrid signature)
+    pub fn sign(&self, data: &[u8]) -> Result<crate::identity::HybridSignature> {
         self.identity.sign(data)
     }
 
-    /// Verify signature from a peer
+    /// Verify signature from a peer (classical Ed25519 only for now)
     pub fn verify(&self, peer: &PeerId, data: &[u8], signature: &ed25519_dalek::Signature) -> Result<()> {
         use ed25519_dalek::Verifier;
         let peer_key = self.peer_keys.get(peer)
@@ -112,51 +109,14 @@ impl SessionManager {
         Ok(())
     }
 
-    /// Initiate handshake with peer
-    pub fn initiate_handshake(&self, peer: PeerId) -> Result<HandshakeInit> {
-        let hs = Handshake::new(self.identity.clone())?;
-        hs.initiate(peer)
-    }
-
-    /// Respond to handshake and create session
-    pub fn respond_handshake(
-        &mut self,
-        peer: PeerId,
-        init: &HandshakeInit,
-    ) -> Result<(HandshakeResp, [u8; 32])> {
-        let peer_key = self.peer_keys.get(&peer)
-            .ok_or(crate::error::CryptoError::KeyDerivation(
-                "Peer key not registered".to_string()
-            ))?;
-
-        let hs = Handshake::new(self.identity.clone())?;
-        hs.respond(peer, init, peer_key)
-    }
-
-    /// Complete handshake and store session
-    pub fn complete_handshake(
-        &mut self,
-        peer: PeerId,
-        resp: &HandshakeResp,
-    ) -> Result<()> {
-        let peer_key = self.peer_keys.get(&peer)
-            .ok_or(crate::error::CryptoError::KeyDerivation(
-                "Peer key not registered".to_string()
-            ))?;
-
-        let hs = Handshake::new(self.identity.clone())?;
-        let session_key = hs.complete(resp, peer_key)?;
-        
-        self.sessions.insert(peer, SessionKey::new(session_key));
-        Ok(())
-    }
-
     /// Get or create session for peer
     pub fn get_session(&mut self, peer: PeerId) -> Result<&mut SessionKey> {
         // Check if exists and still valid
         if let Some(session) = self.sessions.get(&peer) {
             if !session.should_rotate() {
-                return Ok(self.sessions.get_mut(&peer).unwrap());
+                // Safe: we just checked the session exists
+                return Ok(self.sessions.get_mut(&peer)
+                    .expect("session exists from previous get check"));
             }
             // Expired, remove it
             self.sessions.remove(&peer);
@@ -172,7 +132,9 @@ impl SessionManager {
             self.evict_oldest();
         }
 
-        Ok(self.sessions.get_mut(&peer).unwrap())
+        // Safe: we just inserted the session above
+        Ok(self.sessions.get_mut(&peer)
+            .expect("session exists from insert above"))
     }
 
     /// Set session key from handshake (replaces symmetric derivation)
@@ -302,7 +264,7 @@ mod tests {
     fn test_peer_registration() {
         let mut mgr = SessionManager::new(PeerId::random()).unwrap();
         let peer = PeerId::random();
-        let peer_key = SigningKey::from_bytes(&rand::random()).verifying_key();
+        let peer_key = ed25519_dalek::SigningKey::from_bytes(&rand::random()).verifying_key();
         
         mgr.register_peer(peer, peer_key);
         assert!(mgr.peer_keys.contains_key(&peer));
@@ -367,6 +329,8 @@ mod tests {
         assert_eq!(session2.msg_count, 0); // Fresh session
     }
 
+    // Handshake methods removed - now in HandshakeBehaviour
+    /*
     #[test]
     fn test_handshake_initiate() {
         let mgr = SessionManager::new(PeerId::random()).unwrap();
@@ -394,6 +358,7 @@ mod tests {
         let result = mgr.respond_handshake(peer, &init);
         assert!(result.is_err());
     }
+    */
 
     #[test]
     fn test_multiple_peer_sessions() {

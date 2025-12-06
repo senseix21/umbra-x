@@ -41,17 +41,17 @@ impl MessageEnvelope {
         }
     }
     
-    pub fn to_fixed_frame(&self) -> Vec<u8> {
-        let serialized = serde_json::to_vec(self).unwrap();
+    pub fn to_fixed_frame(&self) -> Result<Vec<u8>> {
+        let serialized = serde_json::to_vec(self)
+            .map_err(|e| WireError::Serialization(e.to_string()))?;
         let mut frame = vec![0u8; FRAME_SIZE];
         
         if serialized.len() > FRAME_SIZE {
-            frame.copy_from_slice(&serialized[..FRAME_SIZE]);
-        } else {
-            frame[..serialized.len()].copy_from_slice(&serialized);
+            return Err(WireError::PayloadTooLarge);
         }
         
-        frame
+        frame[..serialized.len()].copy_from_slice(&serialized);
+        Ok(frame)
     }
     
     pub fn from_frame(frame: &[u8]) -> Result<Self> {
@@ -76,7 +76,7 @@ mod tests {
             b"hello world".to_vec(),
         );
         
-        let frame = envelope.to_fixed_frame();
+        let frame = envelope.to_fixed_frame().unwrap();
         assert_eq!(frame.len(), FRAME_SIZE);
         
         let decoded = MessageEnvelope::from_frame(&frame).unwrap();

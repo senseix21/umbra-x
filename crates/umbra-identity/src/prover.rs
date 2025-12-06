@@ -1,11 +1,12 @@
 use ark_bn254::{Bn254, Fr};
-use ark_ff::{Field, PrimeField};
+use ark_ff::Field;
 use ark_groth16::{Groth16, ProvingKey, VerifyingKey, Proof};
 use ark_snark::SNARK;
 use ark_std::rand::rngs::StdRng;
 use ark_std::rand::SeedableRng;
 use crate::circuit::IdentityCircuit;
 use crate::error::IdentityError;
+use crate::field_utils::bytes_to_field;
 
 pub struct Prover {
     pk: ProvingKey<Bn254>,
@@ -49,10 +50,7 @@ impl Prover {
     pub fn prove(&self, secret: &[u8; 32], _identity_id: &[u8; 32]) -> Result<Proof<Bn254>, IdentityError> {
         let mut rng = StdRng::seed_from_u64(1);
         
-        // Convert bytes to field element
-        let secret_fr = Fr::from(u64::from_le_bytes(secret[..8].try_into().unwrap()));
-        
-        // Compute identity_id = secret^5 in field
+        let secret_fr = bytes_to_field(secret)?;
         let id_fr = secret_fr.pow([5u64]);
 
         let circuit = IdentityCircuit {
@@ -65,7 +63,7 @@ impl Prover {
     }
 
     pub fn verify(&self, proof: &Proof<Bn254>, identity_id: &[u8; 32]) -> Result<bool, IdentityError> {
-        // Convert identity_id bytes back to field element
+        use ark_ff::PrimeField;
         let id_fr = Fr::from_le_bytes_mod_order(identity_id);
         
         Groth16::<Bn254>::verify(&self.vk, &[id_fr], proof)
@@ -73,25 +71,17 @@ impl Prover {
     }
 }
 
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ark_ff::BigInteger;
+    use crate::field_utils::{bytes_to_field, field_to_bytes};
 
     #[test]
     fn test_prove_verify() {
         let prover = Prover::setup().unwrap();
-        let secret = [1u8; 32];
-        
-        // Compute id using field arithmetic
-        let secret_u64 = u64::from_le_bytes(secret[..8].try_into().unwrap());
-        let secret_fr = Fr::from(secret_u64);
-        let id_fr = secret_fr.pow([5u64]);
-        
-        let mut id = [0u8; 32];
-        let id_bytes = id_fr.into_bigint().to_bytes_le();
-        id[..id_bytes.len().min(32)].copy_from_slice(&id_bytes[..id_bytes.len().min(32)]);
-
+        let secret = [42u8; 32];
+        let id = field_to_bytes(&bytes_to_field(&secret).unwrap().pow([5u64]));
         let proof = prover.prove(&secret, &id).unwrap();
         assert!(prover.verify(&proof, &id).unwrap());
     }
@@ -99,17 +89,27 @@ mod tests {
     #[test]
     fn test_verify_fails_wrong_id() {
         let prover = Prover::setup().unwrap();
-        let secret = [1u8; 32];
-        let wrong_id = [2u8; 32];
-
-        let secret_u64 = u64::from_le_bytes(secret[..8].try_into().unwrap());
-        let secret_fr = Fr::from(secret_u64);
-        let id_fr = secret_fr.pow([5u64]);
-        let mut id = [0u8; 32];
-        let id_bytes = id_fr.into_bigint().to_bytes_le();
-        id[..id_bytes.len().min(32)].copy_from_slice(&id_bytes[..id_bytes.len().min(32)]);
-
+        let secret = [42u8; 32];
+        let id = field_to_bytes(&bytes_to_field(&secret).unwrap().pow([5u64]));
         let proof = prover.prove(&secret, &id).unwrap();
-        assert!(!prover.verify(&proof, &wrong_id).unwrap());
+        assert!(!prover.verify(&proof, &[99u8; 32]).unwrap());
+    }
+
+    #[test]
+    fn test_different_secrets_different_proofs() {
+        let prover = Prover::setup().unwrap();
+        let id1 = field_to_bytes(&bytes_to_field(&[1u8; 32]).unwrap().pow([5u64]));
+        let id2 = field_to_bytes(&bytes_to_field(&[2u8; 32]).unwrap().pow([5u64]));
+        assert_ne!(id1, id2);
+    }
+
+    #[test]
+    fn test_replay_attack_prevention() {
+        let prover = Prover::setup().unwrap();
+        let secret = [42u8; 32];
+        let id = field_to_bytes(&bytes_to_field(&secret).unwrap().pow([5u64]));
+        let proof = prover.prove(&secret, &id).unwrap();
+        assert!(prover.verify(&proof, &id).unwrap());
+        assert!(!prover.verify(&proof, &[99u8; 32]).unwrap());
     }
 }

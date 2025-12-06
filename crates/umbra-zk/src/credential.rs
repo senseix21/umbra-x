@@ -21,6 +21,7 @@ pub struct MintRequest {
 
 /// Committee member for threshold credential issuance
 pub struct CommitteeMember {
+    #[allow(dead_code)]
     id: Vec<u8>,
     signing_key: Vec<u8>,
 }
@@ -95,7 +96,7 @@ impl CredentialMint {
             signature,
             issued_at: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
+                .map_err(|e| ZkError::SystemTime(e.to_string()))?
                 .as_secs(),
         })
     }

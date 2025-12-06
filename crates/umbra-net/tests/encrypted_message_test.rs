@@ -12,8 +12,8 @@ fn test_message_exchange_roundtrip() {
     let peer_id = PeerId::random();
     
     // Register each other's public keys for signature verification
-    let alice_pubkey = alice.session_manager().public_key();
-    let bob_pubkey = bob.session_manager().public_key();
+    let alice_pubkey = *alice.session_manager().public_key();
+    let bob_pubkey = *bob.session_manager().public_key();
     alice.session_manager_mut().register_peer(peer_id, bob_pubkey);
     bob.session_manager_mut().register_peer(peer_id, alice_pubkey);
     
@@ -25,7 +25,7 @@ fn test_message_exchange_roundtrip() {
     ).unwrap();
     
     // Bob decrypts and verifies signature
-    let (username, content) = bob.decrypt_message(peer_id, &encrypted).unwrap();
+    let (username, content, _identity) = bob.decrypt_message(peer_id, &encrypted).unwrap();
     
     assert_eq!(username, "alice");
     assert_eq!(content, "Hello Bob!");
@@ -41,7 +41,7 @@ fn test_message_exchange_wrong_peer() {
     
     // Register keys
     let alice_pubkey = alice.session_manager().public_key();
-    eve.session_manager_mut().register_peer(alice_peer, alice_pubkey);
+    eve.session_manager_mut().register_peer(alice_peer, *alice_pubkey);
     
     // Alice encrypts for alice_peer
     let encrypted = alice.encrypt_message(
@@ -83,7 +83,7 @@ fn test_signature_verification_success() {
     
     // Bob registers Alice's public key
     let alice_pubkey = alice.session_manager().public_key();
-    bob.session_manager_mut().register_peer(alice_peer, alice_pubkey);
+    bob.session_manager_mut().register_peer(alice_peer, *alice_pubkey);
     
     // Alice sends message
     let encrypted = alice.encrypt_message(alice_peer, "alice", "signed message").unwrap();
@@ -99,13 +99,13 @@ fn test_signature_verification_fails_wrong_key() {
     let shared_peer_id = PeerId::random();
     let mut alice = MessageExchange::new(shared_peer_id).unwrap();
     let mut bob = MessageExchange::new(shared_peer_id).unwrap();
-    let mut eve = MessageExchange::new(PeerId::random()).unwrap();
+    let eve = MessageExchange::new(PeerId::random()).unwrap();
     
     let alice_peer = PeerId::random();
     
     // Bob registers EVE's public key instead of Alice's (wrong key!)
     let eve_pubkey = eve.session_manager().public_key();
-    bob.session_manager_mut().register_peer(alice_peer, eve_pubkey);
+    bob.session_manager_mut().register_peer(alice_peer, *eve_pubkey);
     
     // Alice sends message
     let encrypted = alice.encrypt_message(alice_peer, "alice", "signed message").unwrap();
@@ -129,7 +129,7 @@ fn test_message_tampering_detected() {
     
     // Register Alice's key with Bob
     let alice_pubkey = alice.session_manager().public_key();
-    bob.session_manager_mut().register_peer(peer_id, alice_pubkey);
+    bob.session_manager_mut().register_peer(peer_id, *alice_pubkey);
     
     // Alice sends message
     let mut encrypted = alice.encrypt_message(peer_id, "alice", "original message").unwrap();

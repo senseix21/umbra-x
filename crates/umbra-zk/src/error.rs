@@ -36,4 +36,7 @@ pub enum ZkError {
 
     #[error("Invalid Merkle proof")]
     InvalidMerkleProof,
+    
+    #[error("System time error: {0}")]
+    SystemTime(String),
 }

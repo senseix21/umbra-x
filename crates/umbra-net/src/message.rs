@@ -9,11 +9,14 @@ use umbra_crypto::session::SessionManager;
 use umbra_crypto::aead::Envelope;
 use umbra_wire::message::{ChatMessage, EncryptedMessage};
 use ed25519_dalek;
+use umbra_identity::{Identity, Prover, verify_identity_proof};
 
 /// Manages message encryption/decryption for all peers
 pub struct MessageExchange {
     session_mgr: SessionManager,
     local_peer_id: PeerId,
+    identity: Option<Identity>,
+    prover: Option<Prover>,
 }
 
 impl MessageExchange {
@@ -21,7 +24,18 @@ impl MessageExchange {
         let session_mgr = SessionManager::new(local_peer_id)
             .map_err(|e| NetError::Crypto(format!("SessionManager init: {}", e)))?;
         
-        Ok(Self { session_mgr, local_peer_id })
+        Ok(Self { 
+            session_mgr, 
+            local_peer_id,
+            identity: None,
+            prover: None,
+        })
+    }
+
+    /// Set identity and prover for ZK proofs
+    pub fn set_identity(&mut self, identity: Identity, prover: Prover) {
+        self.identity = Some(identity);
+        self.prover = Some(prover);
     }
 
     /// Get session manager (for handshake integration)
@@ -46,16 +60,19 @@ impl MessageExchange {
             content: content.to_string(),
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
+                .map_err(|e| NetError::Crypto(format!("System time error: {}", e)))?
                 .as_secs(),
-            identity_id: vec![],
+            identity_id: self.identity.as_ref()
+                .map(|id| id.id.to_vec())
+                .unwrap_or_default(),
         };
 
         // Serialize to protobuf
         let plaintext = chat_msg.encode_to_vec();
 
-        // Sign the plaintext message (username || content || timestamp)
-        let signature = self.session_mgr.sign(&plaintext);
+        // Sign the plaintext message with hybrid signature
+        let hybrid_sig = self.session_mgr.sign(&plaintext)
+            .map_err(|e| NetError::Crypto(format!("Sign: {}", e)))?;
 
         // Get or create session and copy key
         let session_key = {
@@ -74,15 +91,30 @@ impl MessageExchange {
         // Split into nonce || ciphertext
         let (nonce, ciphertext) = encrypted_data.split_at(12);
 
-        // Create encrypted message
+        // Generate ZK proof if identity is set
+        let (identity_id, identity_proof) = if let (Some(identity), Some(prover)) = 
+            (&self.identity, &self.prover) {
+            match identity.generate_proof(prover) {
+                Ok(proof) => (identity.id.to_vec(), proof),
+                Err(e) => {
+                    debug!("⚠️  Failed to generate proof: {}", e);
+                    (vec![], vec![])
+                }
+            }
+        } else {
+            (vec![], vec![])
+        };
+
+        // Create encrypted message with hybrid signature
         let enc_msg = EncryptedMessage {
             sender: self.local_peer_id.to_bytes(),
             nonce: nonce.to_vec(),
             ciphertext: ciphertext.to_vec(),
             timestamp: chat_msg.timestamp,
-            signature: signature.to_bytes().to_vec(),
-            identity_id: vec![],
-            identity_proof: vec![],
+            signature: hybrid_sig.classical,
+            identity_id,
+            identity_proof,
+            pq_signature: hybrid_sig.pq.unwrap_or_default(),
         };
 
         // Increment message counter
@@ -99,7 +131,7 @@ impl MessageExchange {
         &mut self,
         peer: PeerId,
         data: &[u8],
-    ) -> Result<(String, String)> {
+    ) -> Result<(String, String, Option<[u8; 32]>)> {
         // Deserialize encrypted message
         let enc_msg = EncryptedMessage::decode(data)
             .map_err(|e| NetError::Protocol(format!("Decode EncryptedMessage: {}", e)))?;
@@ -122,7 +154,7 @@ impl MessageExchange {
 
         // Verify signature if present AND peer key is registered
         if !enc_msg.signature.is_empty() {
-            // Parse signature
+            // Parse Ed25519 signature
             if enc_msg.signature.len() != 64 {
                 debug!("⚠️  Invalid signature length, skipping verification");
             } else {
@@ -134,7 +166,7 @@ impl MessageExchange {
                 if self.session_mgr.get_peer_key(&peer).is_some() {
                     match self.session_mgr.verify(&peer, &plaintext, &signature) {
                         Ok(_) => {
-                            debug!("✅ Signature verified for peer {}", peer);
+                            debug!("✅ Ed25519 signature verified for peer {}", peer);
                         }
                         Err(e) => {
                             debug!("⚠️  Signature verification failed (mock keys): {}", e);
@@ -145,6 +177,37 @@ impl MessageExchange {
                     debug!("⚠️  Peer key not registered, skipping signature verification for {}", peer);
                 }
             }
+            
+            // TODO: Verify Dilithium3 signature if pq_signature is present
+            if !enc_msg.pq_signature.is_empty() {
+                debug!("ℹ️  Dilithium3 signature present but verification not yet implemented");
+            }
+        }
+
+        // Verify ZK identity proof if present
+        let mut verified_identity: Option<[u8; 32]> = None;
+        if !enc_msg.identity_id.is_empty() && !enc_msg.identity_proof.is_empty() {
+            if enc_msg.identity_id.len() == 32 {
+                let mut id = [0u8; 32];
+                id.copy_from_slice(&enc_msg.identity_id);
+                
+                if let Some(prover) = &self.prover {
+                    match verify_identity_proof(prover, &enc_msg.identity_proof, &id) {
+                        Ok(true) => {
+                            debug!("✅ Identity proof verified for {}", hex::encode(&id[..8]));
+                            verified_identity = Some(id);
+                        }
+                        Ok(false) => {
+                            debug!("❌ Identity proof verification failed");
+                        }
+                        Err(e) => {
+                            debug!("⚠️  Identity proof error: {}", e);
+                        }
+                    }
+                } else {
+                    debug!("⚠️  No prover available to verify identity proof");
+                }
+            }
         }
 
         // Deserialize chat message
@@ -153,7 +216,7 @@ impl MessageExchange {
 
         debug!("Decrypted and verified message from {}: {}", chat_msg.username, chat_msg.content);
 
-        Ok((chat_msg.username, chat_msg.content))
+        Ok((chat_msg.username, chat_msg.content, verified_identity))
     }
 
     /// Clean up expired sessions
@@ -180,7 +243,7 @@ mod tests {
         let peer_id = PeerId::random();
 
         // Register keys for signature verification
-        let alice_pubkey = alice.session_manager().public_key();
+        let alice_pubkey = *alice.session_manager().public_key();
         bob.session_manager_mut().register_peer(peer_id, alice_pubkey);
 
         // Alice encrypts
@@ -191,7 +254,7 @@ mod tests {
         ).unwrap();
 
         // Bob decrypts (same local_peer_id means same derived symmetric key)
-        let (username, content) = bob.decrypt_message(peer_id, &encrypted).unwrap();
+        let (username, content, _identity) = bob.decrypt_message(peer_id, &encrypted).unwrap();
         
         assert_eq!(username, "alice");
         assert_eq!(content, "hello bob!");

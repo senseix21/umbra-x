@@ -1,15 +1,15 @@
 use crate::error::{CryptoError, Result};
 use ed25519_dalek::{Signer, Verifier, Signature, SigningKey, VerifyingKey};
+use pqcrypto_dilithium::dilithium3;
+use pqcrypto_traits::sign::{PublicKey as PqPublicKey, SecretKey as PqSecretKey, DetachedSignature as PqSignature};
 
-#[cfg(feature = "pq")]
-use oqs::sig::{Sig, Algorithm};
-
-/// Identity keypair with hybrid signatures
+/// Identity keypair with hybrid signatures (always-on) - Pure Rust!
+#[derive(Clone)]
 pub struct IdentityKey {
     classical_signing: SigningKey,
     classical_verifying: VerifyingKey,
-    #[cfg(feature = "pq")]
-    pq_sig: Sig,
+    pq_secret: Vec<u8>,
+    pq_public: Vec<u8>,
 }
 
 impl IdentityKey {
@@ -17,15 +17,14 @@ impl IdentityKey {
         let classical_signing = SigningKey::from_bytes(&rand::random());
         let classical_verifying = classical_signing.verifying_key();
         
-        #[cfg(feature = "pq")]
-        let pq_sig = Sig::new(Algorithm::Dilithium3)
-            .map_err(|e| CryptoError::PostQuantum(format!("Dilithium init failed: {}", e)))?;
+        // Generate Dilithium3 keypair (pure Rust!)
+        let (pk, sk) = dilithium3::keypair();
         
         Ok(Self {
             classical_signing,
             classical_verifying,
-            #[cfg(feature = "pq")]
-            pq_sig,
+            pq_secret: sk.as_bytes().to_vec(),
+            pq_public: pk.as_bytes().to_vec(),
         })
     }
     
@@ -33,34 +32,24 @@ impl IdentityKey {
         &self.classical_verifying
     }
     
-    #[cfg(feature = "pq")]
-    pub fn pq_verifying_key(&self) -> Result<Vec<u8>> {
-        let (pk, _sk) = self.pq_sig.keypair()
-            .map_err(|e| CryptoError::PostQuantum(format!("Keypair gen failed: {}", e)))?;
-        Ok(pk.into_vec())
+    pub fn pq_verifying_key(&self) -> Vec<u8> {
+        self.pq_public.clone()
     }
     
     /// Sign a message with hybrid signature
     pub fn sign(&self, message: &[u8]) -> Result<HybridSignature> {
         let classical_sig = self.classical_signing.sign(message);
         
-        #[cfg(feature = "pq")]
-        {
-            let (_pk, sk) = self.pq_sig.keypair()
-                .map_err(|e| CryptoError::PostQuantum(format!("Keypair gen failed: {}", e)))?;
-            let pq_sig = self.pq_sig.sign(message, &sk)
-                .map_err(|e| CryptoError::PostQuantum(format!("Signing failed: {}", e)))?;
-            
-            Ok(HybridSignature {
-                classical: classical_sig.to_bytes().to_vec(),
-                pq: Some(pq_sig.into_vec()),
-            })
-        }
+        // Reconstruct secret key from bytes
+        let sk = dilithium3::SecretKey::from_bytes(&self.pq_secret)
+            .map_err(|_| CryptoError::PostQuantum("Invalid secret key".to_string()))?;
         
-        #[cfg(not(feature = "pq"))]
+        // Sign with Dilithium3 (pure Rust!)
+        let pq_signature = dilithium3::detached_sign(message, &sk);
+        
         Ok(HybridSignature {
             classical: classical_sig.to_bytes().to_vec(),
-            pq: None,
+            pq: Some(pq_signature.as_bytes().to_vec()),
         })
     }
     
@@ -72,11 +61,17 @@ impl IdentityKey {
         self.classical_verifying.verify(message, &sig)
             .map_err(|_| CryptoError::SignatureVerification)?;
         
-        #[cfg(feature = "pq")]
-        if let Some(pq_sig) = &signature.pq {
-            let (pk, _sk) = self.pq_sig.keypair()
-                .map_err(|e| CryptoError::PostQuantum(format!("Keypair gen failed: {}", e)))?;
-            self.pq_sig.verify(message, pq_sig, &pk)
+        // Verify PQ signature
+        if let Some(pq_sig_bytes) = &signature.pq {
+            // Reconstruct public key and signature from bytes
+            let pk = dilithium3::PublicKey::from_bytes(&self.pq_public)
+                .map_err(|_| CryptoError::PostQuantum("Invalid public key".to_string()))?;
+            
+            let sig = dilithium3::DetachedSignature::from_bytes(pq_sig_bytes)
+                .map_err(|_| CryptoError::PostQuantum("Invalid signature".to_string()))?;
+            
+            // Verify with Dilithium3 (pure Rust!)
+            dilithium3::verify_detached_signature(&sig, message, &pk)
                 .map_err(|_| CryptoError::SignatureVerification)?;
         }
         

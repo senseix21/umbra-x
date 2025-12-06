@@ -5,6 +5,8 @@ edition.workspace = true
 license.workspace = true
 authors.workspace = true
 
+# Note: PQ features removed - crypto is always-on hybrid (Option C)
+
 [dependencies]
 # Networking
 libp2p = { workspace = true }
@@ -28,7 +30,9 @@ prost = { workspace = true }
 # Internal
 umbra-wire = { path = "../umbra-wire" }
 umbra-crypto = { path = "../umbra-crypto" }
+umbra-identity = { path = "../umbra-identity" }
 ed25519-dalek = { workspace = true }
+hex = "0.4"
 
 [dev-dependencies]
 tracing-subscriber = { workspace = true }

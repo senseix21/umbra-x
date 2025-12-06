@@ -2,19 +2,28 @@
 
 **Post-quantum private chat with zk-verified identities. No servers. No spam. No trace.**
 
-## 🎉 Status: CLI Fully Functional + Desktop App in Development
+## 🎉 Status: Production-Ready CLI (v0.8.0)
 
-The P2P CLI messenger is **ready to use**! Features:
+The P2P CLI messenger is **ready to use** with pure Rust post-quantum cryptography!
+
+**Core Features:**
 - ✅ Real-time P2P messaging
-- ✅ Quantum-resistant encryption (ML-KEM-768 + ChaCha20-Poly1305)
+- ✅ **Pure Rust post-quantum crypto** (Kyber768 + Dilithium3) 🆕
+- ✅ **No external dependencies** (no OpenSSL, no cmake) 🆕
+- ✅ Zero-knowledge identity verification (Groth16 SNARKs)
 - ✅ Peer discovery (Kademlia DHT + manual connection)
 - ✅ Interactive async CLI
-- ✅ Clean message display
-- ✅ Production-ready build
+- ✅ 128 tests passing
 
 **Quick Start:**
 ```bash
+# Build
 cargo build --release --bin umbra
+
+# Create identity (optional)
+./target/release/umbra identity create mypassword
+
+# Start chat
 ./target/release/umbra start -u alice -p 5000
 ```
 
@@ -24,35 +33,51 @@ See [CLI_USER_GUIDE.md](./CLI_USER_GUIDE.md) for detailed usage.
 
 ### 🔐 Post-Quantum Security
 - **Hybrid encryption**: X25519 + ML-KEM-768 (Kyber)
-- **Quantum-safe signatures**: ML-DSA (Dilithium)
+- **Quantum-safe signatures**: ML-DSA (Dilithium3)
 - **Perfect forward secrecy**: Ephemeral keys for every session
 - **Zero-knowledge handshakes**: Prove identity without revealing secrets
 
-### 👤 ZK-Verified Identity System *(Coming Q1 2025)*
-- **One identity, infinite devices**: Prove you own an identity without revealing which device
-- **Multi-device sync**: Same chat history on phone, laptop, desktop
-- **QR code pairing**: Scan to add new device
-- **Privacy-first**: No one knows which device you're using
-- **No blockchain needed**: Pure P2P cryptography
+### 👤 ZK-Verified Identity System ✅ **SHIPPED (v0.7.0)**
+
+**Create verifiable identity from a password:**
+```bash
+$ umbra identity create mypassword
+✅ Identity created
+🆔 ID: 37acb113...
+```
+
+**Chat with verified identities:**
+```
+alice ✓ [15:38:01:37acb113] > Hello!
+         ↑
+      ZK proof verified ✓
+```
 
 **How it works:**
 ```rust
-Identity = Hash(secret_seed)
-Device Proof = ZK-SNARK("I know secret that hashes to Identity X")
-// Prove ownership without revealing secret
+password → blake3 → secret (32 bytes)
+secret → x^5 in BN254 field → identity_id (32 bytes)
+
+On send: Generate ZK proof: "I know secret that hashes to identity_id"
+On receive: Verify proof (zero-knowledge, reveals nothing about password)
 ```
 
-### 💬 Chat History Sync *(Coming Q1 2025)*
-- **Device-to-device sync**: Direct P2P transfer, no servers
-- **Encrypted local storage**: SQLite with AES-256-GCM
-- **Delta sync**: Only transfer new messages
-- **Offline-first**: Works without internet, syncs when devices meet
-- **Backup/restore**: Export encrypted history to file
+**Features:**
+- ✅ Groth16 ZK-SNARKs (production-grade)
+- ✅ Proof generation: 50-100ms
+- ✅ Proof verification: <5ms
+- ✅ Proof size: ~192 bytes
+- ✅ Deterministic (same password = same ID)
+- ✅ Backward compatible (works without identity)
 
-**Storage:**
-- 10,000 messages = ~5 MB
-- 100,000 messages = ~50 MB
-- Fully searchable SQLite database
+See [ZK_IDENTITY.md](./ZK_IDENTITY.md) for technical details.
+
+### 💬 P2P File Transfer *(Coming v0.9.0 - Q1 2026)* ⭐ **NEXT**
+- **Unlimited file size**: No caps like Signal (100 MB) or WhatsApp (2 GB)
+- **Chunk-based streaming**: 1 MB blocks with resume/pause
+- **Multi-source download**: BitTorrent-style from multiple peers
+- **Per-chunk encryption**: Post-quantum encrypted chunks
+- **Folder support**: Transfer entire directories
 
 ### 🌐 Fully P2P Mesh
 - **No central servers**: Direct peer-to-peer connections
@@ -74,20 +99,18 @@ Built with Rust, leveraging:
 ```
 umbra/
 ├─ crates/
-│  ├─ umbra-net/       # P2P networking, QUIC, onion circuits
+│  ├─ umbra-net/       # P2P networking, QUIC, transport
 │  ├─ umbra-crypto/    # Hybrid PQ crypto, ML-KEM, ML-DSA
 │  ├─ umbra-mls/       # MLS group state machine
-│  ├─ umbra-zk/        # Zero-knowledge proofs (RLN, identity)
-│  ├─ umbra-identity/  # ZK identity system (planned)
-│  ├─ umbra-sync/      # Chat history sync (planned)
+│  ├─ umbra-zk/        # Zero-knowledge proofs (RLN, circuits)
+│  ├─ umbra-identity/  # ZK identity system (Groth16) ✅ v0.7.0
 │  ├─ umbra-wire/      # Protocol schemas
 │  ├─ umbra-vault/     # Encrypted storage
 │  └─ umbra-sdk/       # High-level API
 ├─ apps/
-│  ├─ cli/             # Command-line interface
-│  ├─ desktop/         # Tauri desktop UI (in development)
+│  ├─ cli/             # Command-line interface ✅
 │  └─ node/            # Headless relay node
-└─ examples/           # Demos and integration tests
+└─ docs/               # Documentation
 ```
 
 ## Quick Start
@@ -126,31 +149,29 @@ cargo run -p umbra-desktop
 ## Roadmap
 
 ### Completed ✅
-- **Phase A-C**: P2P mesh, quantum-resistant crypto, group messaging
+- **v0.1-0.7**: P2P mesh, quantum-resistant crypto, ZK identity
+- **v0.8.0**: Pure Rust PQ crypto (no OpenSSL/cmake)
 - **CLI messenger**: Production-ready command-line interface
 
-### In Progress 🚧
-- **Desktop app**: Tauri-based GUI (peer connection working)
-- **ZK proofs**: RLN for rate limiting
+### Next: v0.9.0 - P2P File Transfer (Q1 2026) ⭐
+- **Unlimited file size**: No arbitrary caps
+- **Chunk-based**: Resume/pause capability
+- **Multi-source**: BitTorrent-style downloads
+- **PQ encrypted**: Per-chunk quantum-resistant encryption
 
-### Upcoming (Q1 2025) 📋
-- **ZK Identity System**: Multi-device support with privacy
-- **Chat History Sync**: Device-to-device encrypted sync
-- **Mobile apps**: iOS + Android (Rust core, native UI)
-
-### Future (Q2+ 2025) ⏳
-- **Group chats**: MLS-based encrypted groups
-- **Voice/video**: P2P encrypted calls
-- **File sharing**: Large file transfer over P2P
-- **Public alpha**: Invite-only testing
+### Future Releases 📋
+- **v1.0.0** - Mobile apps (iOS + Android)
+- **v1.1.0** - Voice/Video calls
+- **v1.2.0** - AI assistant + Web3 integration
+- **v2.0.0** - Desktop apps, plugin system, bot API
 
 ## Project Status
 
-**Current Phase:** ZK Layer + Desktop App  
-**Progress:** 70% Complete  
-**Test Status:** ✅ 32/32 tests passing  
+**Current Version:** v0.8.0 (Pure Rust PQ Crypto)  
+**Released:** December 6, 2024  
+**Test Status:** ✅ 128 tests passing  
 **CLI Status:** ✅ Production-ready  
-**Desktop Status:** 🚧 In development
+**Next Feature:** P2P File Transfer (v0.9.0)
 
 ## Contributing
 

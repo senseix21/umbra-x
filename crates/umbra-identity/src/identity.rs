@@ -1,9 +1,9 @@
 use crate::error::IdentityError;
-use ark_ff::{Field, PrimeField, BigInteger};
-use ark_bn254::Fr;
+use crate::field_utils::compute_identity_id;
 use serde::{Serialize, Deserialize};
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
 pub struct Identity {
     pub id: [u8; 32],
     #[serde(skip)]
@@ -16,18 +16,8 @@ impl Identity {
             return Err(IdentityError::InvalidPassword);
         }
 
-        // password → secret
         let secret: [u8; 32] = *blake3::hash(password.as_bytes()).as_bytes();
-        
-        // secret → identity_id via x^5 in field
-        let secret_u64 = u64::from_le_bytes(secret[..8].try_into().unwrap());
-        let secret_fr = Fr::from(secret_u64);
-        let id_fr = secret_fr.pow([5u64]);
-        
-        // Convert field element back to bytes
-        let mut id = [0u8; 32];
-        let id_bytes = id_fr.into_bigint().to_bytes_le();
-        id[..id_bytes.len().min(32)].copy_from_slice(&id_bytes[..id_bytes.len().min(32)]);
+        let id = compute_identity_id(&secret)?;
         
         Ok(Self { id, secret })
     }
@@ -53,5 +43,19 @@ mod tests {
         let id1 = Identity::create("password123").unwrap();
         let id2 = Identity::create("password456").unwrap();
         assert_ne!(id1.id, id2.id);
+    }
+
+    #[test]
+    fn empty_password_fails() {
+        assert!(Identity::create("").is_err());
+    }
+
+    #[test]
+    fn secret_not_leaked_in_serialization() {
+        let identity = Identity::create("password123").unwrap();
+        let json = serde_json::to_string(&identity).unwrap();
+        
+        // Secret field should be skipped in serialization
+        assert!(!json.contains("secret"));
     }
 }

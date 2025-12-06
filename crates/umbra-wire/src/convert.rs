@@ -11,12 +11,10 @@ impl From<&CryptoHandshakeInit> for HandshakeInit {
         HandshakeInit {
             peer_id: init.peer_id.clone(),
             x25519_pk: init.x25519_pk.to_vec(),
-            #[cfg(feature = "pq")]
             pq_pk: init.pq_pk.clone(),
-            #[cfg(not(feature = "pq"))]
-            pq_pk: vec![],
             signature: init.signature.to_vec(),
             verify_key: init.verify_key.to_vec(),
+            pq_signature: init.pq_signature.clone(),
         }
     }
 }
@@ -50,9 +48,9 @@ impl TryFrom<&HandshakeInit> for CryptoHandshakeInit {
         Ok(CryptoHandshakeInit {
             peer_id: proto.peer_id.clone(),
             x25519_pk,
-            #[cfg(feature = "pq")]
             pq_pk: proto.pq_pk.clone(),
             signature,
+            pq_signature: proto.pq_signature.clone(),
             verify_key,
         })
     }
@@ -63,12 +61,10 @@ impl From<&CryptoHandshakeResp> for HandshakeResp {
         HandshakeResp {
             peer_id: resp.peer_id.clone(),
             x25519_pk: resp.x25519_pk.to_vec(),
-            #[cfg(feature = "pq")]
             pq_ct: resp.pq_ct.clone(),
-            #[cfg(not(feature = "pq"))]
-            pq_ct: vec![],
             signature: resp.signature.to_vec(),
             verify_key: resp.verify_key.to_vec(),
+            pq_signature: resp.pq_signature.clone(),
         }
     }
 }
@@ -102,9 +98,9 @@ impl TryFrom<&HandshakeResp> for CryptoHandshakeResp {
         Ok(CryptoHandshakeResp {
             peer_id: proto.peer_id.clone(),
             x25519_pk,
-            #[cfg(feature = "pq")]
             pq_ct: proto.pq_ct.clone(),
             signature,
+            pq_signature: proto.pq_signature.clone(),
             verify_key,
         })
     }
@@ -113,17 +109,17 @@ impl TryFrom<&HandshakeResp> for CryptoHandshakeResp {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ed25519_dalek::SigningKey;
+    use umbra_crypto::identity::IdentityKey;
     use umbra_crypto::handshake::Handshake;
     use libp2p::PeerId;
     
-    fn gen_keypair() -> SigningKey {
-        SigningKey::from_bytes(&rand::random())
+    fn gen_identity() -> IdentityKey {
+        IdentityKey::generate().unwrap()
     }
     
     #[test]
     fn test_handshake_init_conversion() {
-        let identity = gen_keypair();
+        let identity = gen_identity();
         let peer = PeerId::random();
         
         let hs = Handshake::new(identity).unwrap();
@@ -142,17 +138,17 @@ mod tests {
 
     #[test]
     fn test_handshake_resp_conversion() {
-        let alice_id = gen_keypair();
-        let alice_pk = alice_id.verifying_key();
-        let bob_id = gen_keypair();
+        let alice_id = gen_identity();
+        let alice_pk = *alice_id.verifying_key();
+        let bob_id = gen_identity();
         
         let alice_peer = PeerId::random();
         let bob_peer = PeerId::random();
         
-        let alice_hs = Handshake::new(alice_id).unwrap();
+        let alice_hs = Handshake::new(alice_id.clone()).unwrap();
         let init = alice_hs.initiate(alice_peer).unwrap();
         
-        let bob_hs = Handshake::new(bob_id).unwrap();
+        let bob_hs = Handshake::new(bob_id.clone()).unwrap();
         let (crypto_resp, _) = bob_hs.respond(bob_peer, &init, &alice_pk).unwrap();
         
         // Convert to proto
@@ -174,6 +170,7 @@ mod tests {
             pq_pk: vec![],
             signature: vec![0u8; 64],
             verify_key: vec![0u8; 32],
+            pq_signature: vec![],
         };
         
         let result = CryptoHandshakeInit::try_from(&proto_init);
@@ -188,6 +185,7 @@ mod tests {
             pq_pk: vec![],
             signature: vec![0u8; 32], // Wrong length!
             verify_key: vec![0u8; 32],
+            pq_signature: vec![],
         };
         
         let result = CryptoHandshakeInit::try_from(&proto_init);
@@ -202,6 +200,7 @@ mod tests {
             pq_pk: vec![],
             signature: vec![0u8; 64],
             verify_key: vec![0u8; 32],
+            pq_signature: vec![],
         };
         
         // Should succeed (peer_id can be empty Vec, though invalid)

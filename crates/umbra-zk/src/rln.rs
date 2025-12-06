@@ -71,11 +71,12 @@ impl RlnProver {
         self.tree.add_member(commitment)
     }
 
-    fn current_epoch(&self) -> u64 {
-        SystemTime::now()
+    fn current_epoch(&self) -> Result<u64> {
+        let duration = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs() / self.config.epoch_duration
+            .map_err(|e| ZkError::SystemTime(e.to_string()))?
+            .as_secs();
+        Ok(duration / self.config.epoch_duration)
     }
 
     fn generate_nullifier(&self, epoch: u64) -> Vec<u8> {
@@ -86,6 +87,7 @@ impl RlnProver {
         hasher.finalize().to_vec()
     }
 
+    #[allow(dead_code)]
     fn secret_to_field(&self) -> [u8; 32] {
         let mut hasher = Sha256::new();
         hasher.update(&self.secret);
@@ -94,7 +96,7 @@ impl RlnProver {
 
     /// Generate RLN proof (with or without zkSNARK depending on features)
     pub fn prove(&mut self, message: &[u8]) -> Result<RlnProof> {
-        let epoch = self.current_epoch();
+        let epoch = self.current_epoch()?;
 
         // Check rate limit
         let count = self.message_count.entry(epoch).or_insert(0);
@@ -179,8 +181,9 @@ impl RlnProver {
     }
 
     pub fn reset_old_epochs(&mut self, keep_epochs: u64) {
-        let current = self.current_epoch();
-        self.message_count.retain(|&epoch, _| epoch >= current.saturating_sub(keep_epochs));
+        if let Ok(current) = self.current_epoch() {
+            self.message_count.retain(|&epoch, _| epoch >= current.saturating_sub(keep_epochs));
+        }
     }
 }
 

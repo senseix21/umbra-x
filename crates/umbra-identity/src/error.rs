@@ -5,6 +5,9 @@ pub enum IdentityError {
     #[error("Invalid password")]
     InvalidPassword,
     
+    #[error("Invalid secret length")]
+    InvalidSecretLength,
+    
     #[error("Circuit error: {0}")]
     Circuit(String),
     

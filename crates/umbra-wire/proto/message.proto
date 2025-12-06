@@ -8,9 +8,10 @@ message EncryptedMessage {
   bytes nonce = 2;         // 12 bytes for ChaCha20Poly1305
   bytes ciphertext = 3;    // Encrypted payload
   uint64 timestamp = 4;    // Unix timestamp
-  bytes signature = 5;     // 64 bytes Ed25519 (optional, for authenticity)
+  bytes signature = 5;     // 64 bytes Ed25519
   bytes identity_id = 6;   // 32 bytes identity ID (optional)
   bytes identity_proof = 7; // ZK proof bytes (optional)
+  bytes pq_signature = 8;  // Dilithium3 signature (~2420 bytes, optional)
 }
 
 // Plaintext message (before encryption)

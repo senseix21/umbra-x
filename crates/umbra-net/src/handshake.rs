@@ -5,6 +5,7 @@ use libp2p::swarm::{ConnectionHandler, NetworkBehaviour};
 use libp2p::PeerId;
 use std::collections::{HashMap, VecDeque};
 use umbra_crypto::handshake::Handshake;
+use umbra_crypto::identity::IdentityKey;
 use umbra_wire::handshake::{
     HandshakeInit as WireHandshakeInit,
     HandshakeResp as WireHandshakeResp,
@@ -14,17 +15,22 @@ use umbra_crypto::handshake::{
     HandshakeInit as CryptoHandshakeInit,
     HandshakeResp as CryptoHandshakeResp,
 };
-use ed25519_dalek::{SigningKey, VerifyingKey};
+use ed25519_dalek::VerifyingKey;
 use tracing::{debug, info};
 
 /// Session state for each peer - SIMPLE STATE MACHINE
-#[derive(Debug, Clone)]
 enum SessionState {
     /// Handshake initiated, waiting for response
-    Pending(CryptoHandshakeInit),
+    /// Stores the Handshake instance to preserve KEM keys for completion
+    Pending {
+        handshake: Handshake,
+        #[allow(dead_code)]
+        init: CryptoHandshakeInit,
+    },
     /// Handshake complete, session established
     Established {
         session_key: [u8; 32],
+        #[allow(dead_code)]
         verify_key: VerifyingKey,
     },
 }
@@ -54,8 +60,8 @@ pub enum HandshakeOutbound {
 
 /// Handshake protocol behaviour - SIMPLIFIED TO 4 FIELDS
 pub struct HandshakeBehaviour {
-    /// Our signing key for authentication
-    identity: SigningKey,
+    /// Our identity key for authentication (hybrid Ed25519 + Dilithium3)
+    identity: IdentityKey,
     
     /// Session state per peer (combines all the old HashMaps)
     sessions: HashMap<PeerId, SessionState>,
@@ -68,7 +74,7 @@ pub struct HandshakeBehaviour {
 }
 
 impl HandshakeBehaviour {
-    pub fn new(identity: SigningKey) -> Self {
+    pub fn new(identity: IdentityKey) -> Self {
         Self {
             identity,
             sessions: HashMap::new(),
@@ -101,14 +107,17 @@ impl HandshakeBehaviour {
         let crypto_init = hs.initiate(peer_id)
             .map_err(|e| format!("Failed to initiate handshake: {:?}", e))?;
         
-        // Store in pending state
-        self.sessions.insert(peer_id, SessionState::Pending(crypto_init.clone()));
-        
         // Convert to wire format and queue for sending
         let wire_init = WireHandshakeInit::from(&crypto_init);
         let msg = HandshakeMessage {
             message: Some(handshake_message::Message::Init(wire_init)),
         };
+        
+        // FIX: Store BOTH handshake instance AND init to preserve KEM keys
+        self.sessions.insert(peer_id, SessionState::Pending {
+            handshake: hs,
+            init: crypto_init,
+        });
         
         self.pending_outbound.push_back(HandshakeOutbound::SendInit {
             peer_id,
@@ -196,11 +205,15 @@ impl HandshakeBehaviour {
         let peer_key = ed25519_dalek::VerifyingKey::from_bytes(&crypto_resp.verify_key)
             .map_err(|e| format!("Invalid verify key: {}", e))?;
 
-        // Complete handshake
-        let hs = Handshake::new(self.identity.clone())
-            .map_err(|e| format!("Failed to create handshake: {:?}", e))?;
+        // FIX: Retrieve the stored handshake instance to complete with same KEM keys
+        let handshake = match self.sessions.remove(&peer_id) {
+            Some(SessionState::Pending { handshake, .. }) => handshake,
+            _ => {
+                return Err(format!("No pending handshake found for peer {}", peer_id));
+            }
+        };
 
-        let session_key = hs.complete(&crypto_resp, &peer_key)
+        let session_key = handshake.complete(&crypto_resp, &peer_key)
             .map_err(|e| format!("Failed to complete handshake: {:?}", e))?;
 
         // Update to established state
@@ -274,13 +287,13 @@ impl NetworkBehaviour for HandshakeBehaviour {
 mod tests {
     use super::*;
 
-    fn gen_keypair() -> SigningKey {
-        SigningKey::from_bytes(&rand::random())
+    fn gen_identity() -> IdentityKey {
+        IdentityKey::generate().unwrap()
     }
 
     #[test]
     fn test_handshake_behaviour_creation() {
-        let identity = gen_keypair();
+        let identity = gen_identity();
         let behaviour = HandshakeBehaviour::new(identity);
         
         assert_eq!(behaviour.sessions.len(), 0);
@@ -288,7 +301,7 @@ mod tests {
 
     #[test]
     fn test_session_state_simple() {
-        let identity = gen_keypair();
+        let identity = gen_identity();
         let mut behaviour = HandshakeBehaviour::new(identity);
         
         let peer_id = PeerId::random();
@@ -300,7 +313,7 @@ mod tests {
         behaviour.initiate_handshake(peer_id).unwrap();
         assert!(matches!(
             behaviour.sessions.get(&peer_id),
-            Some(SessionState::Pending(_))
+            Some(SessionState::Pending { .. })
         ));
     }
 }
